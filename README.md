@@ -16,7 +16,9 @@
 7. [Bảng MQTT Topics](#7-bảng-mqtt-topics)
 8. [Bảng ngưỡng cảnh báo](#8-bảng-ngưỡng-cảnh-báo)
 9. [Cấu trúc thư mục dự án](#9-cấu-trúc-thư-mục-dự-án)
-10. [Troubleshooting](#10-troubleshooting)
+10. [Kiểm thử không cần mạch thật](#10-kiểm-thử-không-cần-mạch-thật)
+11. [Troubleshooting](#11-troubleshooting)
+12. [Khối AI/ML](#12--khối-aiml-dự-báo-ngập-úng-đa-tầng-thời-gian-multi-horizon-ai)
 
 ---
 
@@ -30,14 +32,21 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 |---|---|
 | Đo mực nước cống | Cảm biến siêu âm JSN-SR04T chống nước (Node 1) |
 | Đo độ sâu ngập đường | Cảm biến siêu âm JSN-SR04T chống nước (Node 2) |
-| Lọc nhiễu | Median filter (N=7) + Moving average (N=5) |
-| Bộ lọc ổn định | Node 2: giá trị phải ổn định 20 giây mới được chấp nhận |
-| Cảnh báo có trễ (hysteresis) | Tránh cảnh báo nhấp nháy khi giá trị nằm gần ngưỡng |
-| Tốc độ dâng nước | Tính và cảnh báo khi nước dâng > 5 cm/phút |
-| LED + Buzzer | Hiển thị trực quan tại chỗ (Node 2) |
-| Dashboard | Giao diện web Node-RED Dashboard realtime |
-| Telegram Bot | Cảnh báo tiếng Việt tức thì |
-| ThingSpeak | Lưu trữ và vẽ đồ thị dữ liệu trên cloud |
+| Lọc nhiễu | Node: trung vị 7 mẫu, bỏ mẫu lỗi/vùng mù · Edge: trung bình trượt 5 mẫu |
+| Chống báo sai | Node đường: mức mới phải giữ ổn định 20 s (xe/người đi qua bị bỏ qua) |
+| Hysteresis | Ngưỡng lên/xuống khác nhau + thời gian giữ tối thiểu → không nhấp nháy |
+| Tốc độ dâng | Edge tính theo cửa sổ 1 phút; dùng làm tín hiệu cảnh báo sớm |
+| Cảnh báo tại chỗ | Đèn 3 màu + còi ở node đường, **chạy trong task riêng – vẫn hoạt động khi mất WiFi/broker** |
+| Yêu cầu vận hành | Cống ĐỎ → Telegram "bật bơm/mở van" kèm **nút Xác nhận**; nhắc lại sau 10 phút |
+| Kết hợp 2 node | Cống ĐỎ + đường ngập → "Ngập đang lan rộng" kèm **thời gian báo trước** |
+| Quản lý thiết bị | Heartbeat (RSSI, uptime, lỗi đo, fw), Last Will, watchdog 30 s |
+| Cấu hình & hiệu chuẩn từ xa | Đổi ngưỡng / chu kỳ / kích thước lắp đặt, hiệu chuẩn d0/H từ dashboard; node lưu NVS |
+| Dashboard | 2 tab: Giám sát & Quản lý thiết bị |
+| Telegram Bot | Cảnh báo theo mức, xác nhận xử lý, lệnh `/status` |
+| **Cloud tự xây dựng** | VM: Mosquitto (mật khẩu + ACL) + server Node.js + SQLite + **web công khai (bản đồ ngập)** và **console quản lý** qua HTTPS — xem [cloud/README.md](cloud/README.md) |
+| ThingSpeak | (Tuỳ chọn) lưu lịch sử trên ThingSpeak, gộp 2 node / 15 s |
+
+> 📘 **Bảo vệ đề tài:** đối chiếu tiêu chí chấm, cách giải thích kiến trúc, kịch bản video và câu hỏi thường gặp ở [docs/HUONG_DAN_DEMO.md](docs/HUONG_DAN_DEMO.md).
 
 ---
 
@@ -47,8 +56,8 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     TẦNG 4 — CLOUD                                       │
 │          ┌───────────────┐          ┌──────────────────┐                 │
-│          │  ThingSpeak   │          │   Telegram Bot   │                 │
-│          │  (IoT Cloud)  │          │  (Alert Channel) │                 │
+│          │   Cloud VM    │          │   Telegram Bot   │                 │
+│          │ server + web  │          │  (Alert Channel) │                 │
 │          └───────┬───────┘          └────────┬─────────┘                 │
 └──────────────────┼──────────────────────────┼─────────────────────────── ┘
                    │ HTTPS                    │ HTTPS
@@ -126,7 +135,7 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 | LED Xanh lá | Anode → R220Ω | GPIO 26 |
 | LED Vàng | Anode → R220Ω | GPIO 27 |
 | LED Đỏ | Anode → R220Ω | GPIO 14 |
-| Buzzer (+) | | GPIO 12 |
+| Buzzer (+) | | GPIO 25 (**không dùng GPIO 12** – chân strapping, làm ESP32 không khởi động) |
 | Buzzer (−) | | GND |
 | Tất cả Cathode LED | | GND |
 
@@ -150,7 +159,7 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 | Thư viện | Cài qua | Tác giả |
 |---|---|---|
 | `PubSubClient` | Library Manager | Nick O'Leary |
-| `ArduinoJson` | Library Manager | Benoit Blanchon |
+| `ArduinoJson` **≥ 7** | Library Manager | Benoit Blanchon |
 | ESP32 Board Package | Board Manager | Espressif |
 
 ### Tài khoản Cloud
@@ -181,27 +190,20 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 
 #### 1.3 Cấu hình config.h
 
-Chỉnh sửa file `firmware/config.h`:
+Hai node dùng **chung một sketch** [`firmware/flood_node/flood_node.ino`](firmware/flood_node/flood_node.ino).
+Sao chép `firmware/flood_node/config.example.h` thành `firmware/flood_node/config.h` (đã gitignore) và sửa:
 
 ```cpp
-#define WIFI_SSID       "Ten_WiFi_cua_ban"
-#define WIFI_PASSWORD   "Mat_khau_WiFi"
-#define MQTT_SERVER     "192.168.1.100"   // IP laptop
+#define NODE_ID     "cong1"         // hoặc "duong1"
+#define NODE_ROLE   ROLE_DRAIN      // ROLE_DRAIN = node cống, ROLE_ROAD = node đường
+#define WIFI_SSID   "Ten_WiFi"
+#define WIFI_PASSWORD "Mat_khau"
+#define MQTT_SERVER "192.168.1.100" // IP laptop chạy Mosquitto
 ```
 
-Sao chép `config.h` vào thư mục của từng sketch:
-- `firmware/node_cong1/config.h`
-- `firmware/node_duong1/config.h`
-
-Trong mỗi file, bỏ comment đúng NODE_ID:
-
-```cpp
-// Cho node_cong1.ino:
-#define NODE_ID "cong1"
-
-// Cho node_duong1.ino:
-#define NODE_ID "duong1"
-```
+Nạp lần 1 cho mạch cống, sửa `NODE_ID`/`NODE_ROLE` rồi nạp lần 2 cho mạch đường.
+Các thông số lắp đặt (H, Hmax, d0, ngưỡng) chỉ là mặc định — sau khi lắp, vào dashboard
+**Quản lý thiết bị** để hiệu chuẩn và chỉnh từ xa, không cần nạp lại firmware.
 
 #### 1.4 Nạp firmware
 
@@ -243,7 +245,9 @@ Truy cập: **http://localhost:1880**
 
 **Cài palettes** (Menu → Manage Palette → Install):
 - `node-red-dashboard`
-- `node-red-contrib-telegram`
+- `node-red-contrib-telegrambot`
+
+> Nếu chạy bằng `start_all.bat`, Node-RED dùng sẵn `nodered/.node-red/flows.json` – không cần import.
 
 **Import flow:**
 1. Menu → Import → Select file → chọn `nodered/flows.json`
@@ -269,7 +273,7 @@ Truy cập: **http://localhost:1880**
    - Field 5: `cong1_alert`
    - Field 6: `duong1_alert`
 4. Vào **API Keys** → sao chép Write API Key
-5. Cập nhật biến môi trường hoặc global trong Node-RED
+5. Sao chép `config/secrets.env.example` → `config/secrets.env`, điền `THINGSPEAK_WRITE_API_KEY`
 
 ---
 
@@ -282,53 +286,63 @@ Truy cập: **http://localhost:1880**
    ```
    https://api.telegram.org/bot<TOKEN>/getUpdates
    ```
-5. Lấy `chat.id` từ JSON
-6. Cấu hình trong Node-RED (xem Bước 3)
+5. Lấy `chat.id` từ JSON → điền `TELEGRAM_CHAT_ID` trong `config/secrets.env`
+6. Trong Node-RED, mở node cấu hình **FloodAlertBot** → dán Bot Token → Deploy
+7. Thử: nhắn `/status` cho bot. Khi cống lên ĐỎ, tin nhắn có nút **✅ Đã xử lý**; chỉ chat có `TELEGRAM_CHAT_ID` mới xác nhận được.
 
 ---
 
 ## 7. Bảng MQTT Topics
 
-| Topic | Hướng | QoS | Retain | Mô tả | Payload mẫu |
-|---|---|---|---|---|---|
-| `flood/cong1/level` | ESP32 → Broker | 1 | No | Mực nước + % đầy | `{"level_cm":85.3,"fill_pct":47.4,"rise_rate":1.2,"status":"green","timestamp":12345}` |
-| `flood/cong1/status` | ESP32 → Broker | 1 | No | Trạng thái cảnh báo | `"green"` / `"yellow"` / `"red"` |
-| `flood/cong1/online` | ESP32 → Broker | 1 | Yes | Trạng thái kết nối | `"online"` / `"offline"` (Last Will) |
-| `flood/cong1/rate` | (computed Node-RED) | — | No | Tốc độ dâng (cm/min) | `2.3` |
-| `flood/duong1/depth` | ESP32 → Broker | 1 | No | Độ sâu ngập đường | `{"depth_cm":3.5,"status":"yellow","stable":true,"timestamp":12345}` |
-| `flood/duong1/online` | ESP32 → Broker | 1 | Yes | Trạng thái kết nối | `"online"` / `"offline"` |
-| `flood/duong1/buzzer` | Node-RED → ESP32 | 1 | No | Lệnh tắt còi | `"off"` |
+Cấu trúc `flood/<mã node>/...` — thêm node mới chỉ cần đổi `NODE_ID`; Node-RED subscribe `flood/+/...` nên tự nhận.
+
+| Topic | Hướng | Retain | Nội dung |
+|---|---|---|---|
+| `flood/<id>/level` | Node → Edge | Không | Cống: `{"node":"cong1","d":32.4,"m":27.6,"L":78.9,"ts":1763100000}` · Đường: `{"node":"duong1","d":28.0,"h":12.0,"muc":"yellow","stable":true,"buzzer_muted":false,"ts":...}` |
+| `flood/<id>/status` | Node → Edge | Có | `online` / `offline` (Last Will khi node rớt đột ngột) |
+| `flood/<id>/info` | Node → Edge | Có | Heartbeat 30 s: `fw, ip, rssi, uptime_s, heap, sensor_err, cfg{...}` |
+| `flood/<id>/event` | Node → Edge | Không | `calibrated`, `calibrate_failed`, `config_applied`, `config_rejected`, `buzzer` |
+| `flood/<id>/config` | Edge → Node | Có | Cấu hình từ xa (chỉ cần các khoá muốn đổi): `H, Hmax` (cống) · `d0, t_yellow, t_red, t_red_low, t_yellow_low, stable_s` (đường) · `period_s` |
+| `flood/<id>/cmd` | Edge → Node | Không | `{"cmd":"calibrate"}` (đo lại H khi cống rỗng / d0 khi đường khô), `report`, `reboot` |
+| `flood/duong1/alarm/cmd` | Edge → Node | Không | `off` (tắt còi) / `on` (bật lại còi) |
+| `flood/edge/state` | Edge → Cloud (bridge) | Có | Trạng thái đã xử lý: mức từng node, sự cố đang mở, ngập lan rộng |
+| `flood/edge/log`, `flood/edge/incident` | Edge → Cloud | Không | Nhật ký; sự cố đã đóng (thời lượng, phản hồi, báo trước) |
+| `flood/edge/bridge` | Bridge → Cloud | Có | `1`/`0` – gateway kết nối cloud (Last Will của bridge) |
+| `flood/cloud/ack`, `flood/cloud/config/<id>`, `flood/cloud/cmd/<id>`, `flood/cloud/alarm/<id>` | Cloud → Edge | Không | Lệnh từ Web console; gateway kiểm duyệt rồi mới chuyển xuống node |
+| `flood/ai/prediction` | ML service → Edge | Không | Kết quả dự báo AI |
+| `flood/weather/radar` | Simulator → ML | Không | Mưa mô phỏng (chỉ dùng khi test) |
 
 ---
 
 ## 8. Bảng ngưỡng cảnh báo
 
-### Node 1 — cong1 (Mực nước cống, tính theo % đầy)
+### Node cống — phân mức tại Node-RED (L = % đầy, v = tốc độ dâng)
 
-| Trạng thái | Điều kiện vào | Điều kiện thoát | LED/Âm thanh |
+| Mức | Lên mức khi | Hạ mức (sau khi giữ ≥ 30 s) | Hành động |
 |---|---|---|---|
-| 🟢 AN TOÀN | Mặc định / fill < 60% | — | — |
-| 🟡 CẢNH BÁO | fill ≥ 60% | fill < 50% | — |
-| 🔴 NGUY HIỂM | fill ≥ 80% **hoặc** dâng > 5 cm/phút | fill < 70% | — |
+| 🟢 XANH | — | về XANH khi L ≤ 45% và v < 1,5 | Theo dõi |
+| 🟡 VÀNG | L > 50% **hoặc** v ≥ 2 cm/phút | rời ĐỎ khi L ≤ 75% và không (L > 55% và v ≥ 4) | Telegram thông báo theo dõi |
+| 🔴 ĐỎ | L > 80% **hoặc** (L > 60% **và** v ≥ 5 cm/phút) | | Telegram **YÊU CẦU bật bơm/mở van** + nút Xác nhận, nhắc lại sau 10 phút |
 
-### Node 2 — duong1 (Độ sâu ngập mặt đường, cm)
+### Node đường — phân mức ngay trên ESP32 (h = độ sâu ngập)
 
-| Trạng thái | Điều kiện vào | Điều kiện thoát | LED | Buzzer |
+| Mức | Lên mức khi | Hạ mức khi | Đèn | Còi |
 |---|---|---|---|---|
-| 🟢 AN TOÀN | depth < 5 cm | — | Xanh sáng | Tắt |
-| 🟡 CẢNH BÁO | depth ≥ 5 cm | depth < 3 cm | Vàng sáng | Kêu 1 kHz |
-| 🔴 NGẬP | depth ≥ 15 cm | depth < 10 cm | Đỏ sáng | Kêu 2.5 kHz |
+| 🟢 XANH | — | về XANH khi h < 8 cm | Xanh | Tắt |
+| 🟡 VÀNG | h ≥ 10 cm | rời ĐỎ khi h < 15 cm | Vàng | Tắt |
+| 🔴 ĐỎ | h > 20 cm | | Đỏ | Kêu ngắt quãng (tắt được từ dashboard) |
 
-### Cảnh báo tổng hợp (Node-RED)
+Mọi chuyển mức của node đường phải giữ ổn định **20 s**. Ngưỡng là giá trị theo báo cáo; khi demo trên khay nông,
+quy đổi nhỏ lại bằng form **Quản lý thiết bị → Node đường duong1** (ví dụ 2 / 4 / 3 / 1,5 cm).
 
-| Tình huống | Mức độ | Tin nhắn Telegram |
-|---|---|---|
-| cong1=yellow | ⚠️ CẢNH BÁO | Mực nước trong cống đạt X%, tốc độ dâng Y cm/phút. |
-| cong1=red | 🚨 NGUY HIỂM | Cống sắp tràn! Mực nước X%, dâng Y cm/phút. |
-| duong1=red | 🌊 NGẬP ĐƯỜNG | Độ sâu ngập X cm. Yêu cầu điều tiết giao thông. |
-| cong1=red + duong1=red | 🆘 NGẬP NGHIÊM TRỌNG | KHẨN CẤP! Cống tràn + mặt đường ngập X cm. |
+### Kết hợp hai node (Node-RED)
 
-> **Ghi chú:** Tin Telegram chỉ gửi khi **trạng thái thay đổi** (tránh spam).
+| Tình huống | Tin Telegram |
+|---|---|
+| Mức của một node thay đổi (lên **hoặc xuống**) | Tin theo mức, kèm số đo |
+| Cống chuyển sang ĐỎ | Yêu cầu bật bơm/mở van + nút ✅; khi cống hạ mức gửi tổng kết sự cố (thời lượng, ai xác nhận, sau bao lâu) |
+| Cống ĐỎ **và** đường ≥ VÀNG | "🌊 Ngập đang lan rộng" + thời gian cống đã báo trước |
+| Node offline (Last Will) / không có dữ liệu > 30 s | Báo mất kết nối, báo lại khi có dữ liệu |
 
 ---
 
@@ -336,28 +350,47 @@ Truy cập: **http://localhost:1880**
 
 ```
 PRoject/
-├── firmware/
-│   ├── config.h                    # Cấu hình WiFi/MQTT/Hardware (không commit)
-│   ├── node_cong1/
-│   │   └── node_cong1.ino          # Firmware Node 1 (cống)
-│   └── node_duong1/
-│       └── node_duong1.ino         # Firmware Node 2 (đường)
+├── firmware/flood_node/
+│   ├── flood_node.ino              # Firmware dùng chung cho mọi node (chọn vai trò trong config.h)
+│   └── config.example.h            # Mẫu cấu hình → sao chép thành config.h (không commit)
+├── cloud/                          # Tầng Cloud tự xây dựng (triển khai trên VM bằng docker compose)
+│   ├── docker-compose.yml, Caddyfile, .env.example, mosquitto/
+│   └── server/                     # server.js (MQTT→SQLite→REST/WebSocket) + public/ (web app)
+├── docs/HUONG_DAN_DEMO.md          # Đối chiếu tiêu chí, kịch bản demo, Q&A
 ├── mosquitto/
-│   ├── mosquitto.conf              # Cấu hình Mosquitto broker
+│   ├── mosquitto.conf              # Cấu hình Mosquitto broker (gateway)
+│   ├── conf.d/cloud-bridge.conf.example  # Bridge gateway ⇄ cloud
 │   ├── start_broker.bat            # Script khởi động broker (Windows)
 │   └── data/                       # Dữ liệu persistence (auto-created)
 ├── nodered/
-│   ├── flows.json                  # Node-RED flow hoàn chỉnh
+│   ├── flows.json                  # Bản export flow (giống .node-red/flows.json)
+│   ├── .node-red/                  # userDir Node-RED mà start_all.ps1 sử dụng
 │   └── README_nodered.md           # Hướng dẫn cài đặt Node-RED
 ├── config/
-│   └── secrets.env                 # Template biến môi trường (không commit)
+│   ├── secrets.env.example         # Mẫu → sao chép thành secrets.env (không commit)
+│   └── gis_hydraulic_params.json   # Tham số cho khối AI
+├── test_simulator.py               # Node ảo cong1/duong1 (kịch bản hoặc --loop)
+├── simulate_nodes.bat              # Chạy mô phỏng liên tục
+├── start_all.bat                   # Khởi động broker + AI + Node-RED
 ├── .gitignore
 └── README.md                       # File này
 ```
 
 ---
 
-## 10. Troubleshooting
+## 10. Kiểm thử không cần mạch thật
+
+```bash
+python test_simulator.py          # 4 kịch bản: an toàn → cảnh báo → khẩn cấp → hồi phục (~2 phút)
+python test_simulator.py --loop   # chu kỳ mưa lặp liên tục (simulate_nodes.bat)
+```
+
+Node ảo dùng đúng giao thức firmware v2 nên thử được cả: nút Xác nhận trên Telegram, form cấu hình,
+nút hiệu chuẩn, tắt/bật còi, và **Ctrl+C để thấy hệ thống báo node offline**. Đây là dữ liệu mô phỏng — ghi rõ khi đưa vào báo cáo.
+
+---
+
+## 11. Troubleshooting
 
 ### ESP32 không kết nối WiFi
 - Kiểm tra SSID/Password trong `config.h`
@@ -395,11 +428,11 @@ PRoject/
 
 ---
 
-## 11. 🤖 Khối AI/ML: Dự Báo Ngập Úng Đa Tầng Thời Gian (Multi-Horizon AI)
+## 12. 🤖 Khối AI/ML: Dự Báo Ngập Úng Đa Tầng Thời Gian (Multi-Horizon AI)
 
 > **Thỏa mãn trọn vẹn tiêu chí chấm điểm:** *"Ứng dụng AI/ML để phân tích dữ liệu IoT để dự báo hoặc đưa ra quyết định thông minh"* (1 điểm).
 
-### 11.1. Kiến trúc Cảnh báo 2 Cấp Độ (Two-Tier Multi-Horizon)
+### 12.1. Kiến trúc Cảnh báo 2 Cấp Độ (Two-Tier Multi-Horizon)
 Hệ thống giải quyết bài toán cảnh báo ngập úng bằng kiến trúc phân tầng đa mốc thời gian:
 
 1. **Cấp 1 — Chốt chặn tức thời tại chỗ (Mốc +5 phút & +15 phút, chạy tại Edge IT):**
@@ -411,7 +444,7 @@ Hệ thống giải quyết bài toán cảnh báo ngập úng bằng kiến tr�
    - **Trọng số chi phối:** Lượng mưa dự báo trong tương lai vọt lên chiếm **$76\%$** (thay thế mực nước cống ban đầu).
    - **Hành động phản ứng:** Phát cảnh báo xác suất ngập úng lên ứng dụng **iHanoi**, kênh **VOV Giao thông**, Google Maps để phân luồng phương tiện từ xa (tránh chết máy gây tê liệt tuyến đường), đồng thời chỉ đạo các đại hồ điều hòa (Hồ Yên Sở) chủ động bơm hạ mực nước đệm.
 
-### 11.2. Kết quả đánh giá mô hình tích hợp Thủy lực Manning & Địa hình GIS
+### 12.2. Kết quả đánh giá mô hình tích hợp Thủy lực Manning & Địa hình GIS
 
 | Mốc dự báo | Sai số MAE (cm) | RMSE (cm) | Hệ số $R^2$ | Đặc trưng quyết định | Ứng dụng thực tế |
 |:---:|:---:|:---:|:---:|---|---|
@@ -420,13 +453,13 @@ Hệ thống giải quyết bài toán cảnh báo ngập úng bằng kiến tr�
 | **+30 phút** | **1.41 cm** | 4.42 cm | **0.9965** | Mưa Radar 30m & Sông Tô Lịch dội ngược | **Phân luồng xe iHanoi / VOV Giao thông** |
 | **+60 phút** | **3.30 cm** | 10.42 cm | **0.9803** | Mưa Radar 60m ($79.5\%$) & Dòng chảy lưu vực | Bơm xả đệm hồ Yên Sở, lùi giờ tan tầm |
 
-### 11.3. Cấu hình Thông số Thủy Lực & Địa Hình GIS (`config/gis_hydraulic_params.json`)
+### 12.3. Cấu hình Thông số Thủy Lực & Địa Hình GIS (`config/gis_hydraulic_params.json`)
 Hệ thống sử dụng các công thức vật lý chuyên ngành:
 * **Công thức dòng chảy mặt Rational Method:** $Q_{inflow} = \frac{C \cdot I \cdot A}{360}$ ($C = 0.85$, $A = 12.5\text{ ha}$).
 * **Công thức năng lực tải cống ngầm Manning:** $Q_{\max} = \frac{1}{n} A R^{2/3} S^{1/2}$ ($D = 1000\text{ mm}$, $n = 0.013$, độ dốc $0.2\% \to Q_{\max} = 1.45\text{ m}^3/\text{s}$).
 * **Hệ số quá tải thủy lực:** $Overload = Q_{inflow} / Q_{\text{actual}}$ (phát hiện cống quá tải trước khi nước dâng).
 
-### 11.4. Cấu trúc thư mục AI/ML
+### 12.4. Cấu trúc thư mục AI/ML
 ```
 config/
 ├── gis_hydraulic_params.json         # Cấu hình lưu vực GIS và thông số thủy lực cống
@@ -449,8 +482,8 @@ data/
 └── sensor_history.csv                # Log dữ liệu cảm biến & kết quả dự báo thời gian thực
 ```
 
-### 11.5. Khởi chạy và Trải nghiệm
-- Khi chạy script tổng thể [`start_all.bat`](file:///c:/Users/Duc/Desktop/IoT/PRoject/start_all.bat), dịch vụ AI `edge_ml_service.py` sẽ **tự động khởi động** cùng Mosquitto Broker và Node-RED.
+### 12.5. Khởi chạy và Trải nghiệm
+- Khi chạy script tổng thể [`start_all.bat`](start_all.bat), dịch vụ AI `edge_ml_service.py` sẽ **tự động khởi động** cùng Mosquitto Broker và Node-RED.
 - Dashboard [http://localhost:1880/ui](http://localhost:1880/ui) hiển thị:
   1. Đồng hồ đo dự báo tại chỗ (+5 phút).
   2. Đồng hồ đo **Xác suất ngập úng phục vụ giao thông (+30 phút)**.
@@ -459,7 +492,7 @@ data/
 
 ---
 
-## 12. 🔮 Hướng Phát Triển Tiếp Theo Của Đề Tài (Future Work)
+## 13. 🔮 Hướng Phát Triển Tiếp Theo Của Đề Tài (Future Work)
 
 Sau khi đã hoàn thiện thành công mô hình tích hợp Thủy lực Manning & Địa hình GIS phục vụ cảnh báo đa tầng thời gian (5m – 60m), các bước phát triển tiếp theo khi đưa hệ thống từ quy mô thử nghiệm (Proof of Concept) ra triển khai thực địa toàn đô thị Hà Nội gồm:
 

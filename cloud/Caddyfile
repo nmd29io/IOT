@@ -1,0 +1,5 @@
+# DOMAIN lấy từ .env. Caddy tự xin và gia hạn chứng chỉ HTTPS; WebSocket (/ws) được chuyển tiếp tự động.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy server:8080
+}

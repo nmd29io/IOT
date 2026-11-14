@@ -1,0 +1,2 @@
+# File chạy trên Linux (VM cloud, container) luôn dùng LF
+cloud/** text eol=lf

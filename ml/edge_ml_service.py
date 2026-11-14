@@ -92,10 +92,10 @@ def on_connect(client, userdata, flags, rc, properties=None):
         print("[MQTT] Đã kết nối thành công tới Mosquitto Broker!")
         client.subscribe([
             ("flood/cong1/level", 1),
-            ("flood/duong1/depth", 1),
+            ("flood/duong1/level", 1),
             ("flood/weather/radar", 1)
         ])
-        print("[MQTT] Đã subscribe: flood/cong1/level, flood/duong1/depth, flood/weather/radar")
+        print("[MQTT] Đã subscribe: flood/cong1/level, flood/duong1/level, flood/weather/radar")
     else:
         print(f"[MQTT ERROR] Mã lỗi kết nối: {rc}")
 
@@ -108,8 +108,8 @@ def on_message(client, userdata, msg):
     except Exception:
         return
 
-    if msg.topic == "flood/duong1/depth":
-        current_road_depth = float(payload.get("depth_cm", 0.0))
+    if msg.topic == "flood/duong1/level":
+        current_road_depth = float(payload.get("h", payload.get("depth_cm", 0.0)))
         return
 
     if msg.topic == "flood/weather/radar":
@@ -117,9 +117,10 @@ def on_message(client, userdata, msg):
         return
 
     if msg.topic == "flood/cong1/level":
-        level_cm = float(payload.get("level_cm", 0.0))
+        # Firmware v2 gửi {"m": mực nước cm, "L": % đầy}; vẫn đọc được định dạng cũ level_cm/fill_pct
+        level_cm = float(payload.get("m", payload.get("level_cm", 0.0)))
         level_cm = max(0.0, min(180.0, level_cm))
-        fill_pct = float(payload.get("fill_pct", (level_cm / 180.0) * 100))
+        fill_pct = float(payload.get("L", payload.get("fill_pct", (level_cm / 180.0) * 100)))
         fill_pct = max(0.0, min(100.0, fill_pct))
 
         history_cong1.append((now, level_cm))
