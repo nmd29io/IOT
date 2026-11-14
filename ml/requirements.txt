@@ -1,0 +1,7 @@
+# Thư viện cho dịch vụ AI (ml/edge_ml_service.py), huấn luyện (ml/train_model.py) và simulator (test_simulator.py)
+paho-mqtt>=2.0
+numpy
+pandas
+scikit-learn
+joblib
+matplotlib

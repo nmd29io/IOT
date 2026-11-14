@@ -1,0 +1,12 @@
+# Phân quyền topic (Security). Gateway: đẩy dữ liệu lên, nhận lệnh flood/cloud/#.
+user edge
+topic write flood/edge/#
+topic write flood/+/info
+topic write flood/+/status
+topic write flood/ai/prediction
+topic read flood/cloud/#
+
+# Server: đọc dữ liệu, chỉ được gửi lệnh vào flood/cloud/#.
+user server
+topic read flood/#
+topic write flood/cloud/#

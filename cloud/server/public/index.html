@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bản đồ ngập thời gian thực</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>🌊 Bản đồ ngập thời gian thực</h1>
+    <div class="sub">Hệ thống IoT giám sát &amp; cảnh báo ngập úng – mô hình thử nghiệm, Nhóm 1 (INT3323)</div>
+  </div>
+  <div class="row">
+    <span id="overall" class="pill">Đang tải…</span>
+    <span class="muted" id="updated"></span>
+  </div>
+</header>
+
+<main>
+  <div id="simBanner" class="banner info hidden">ℹ️ Hệ thống đang chạy với <b>dữ liệu mô phỏng</b> (chưa gắn cảm biến thật).</div>
+  <div id="staleBanner" class="banner warn hidden">⚠️ Mất kết nối với trạm thu thập (gateway) – dữ liệu dưới đây có thể đã cũ.</div>
+  <div id="spreadBanner" class="banner danger hidden">🌊 Ngập đang lan rộng: cống quá tải và mặt đường đã ngập. Hạn chế di chuyển qua khu vực.</div>
+
+  <div class="card">
+    <h2>Các điểm đo</h2>
+    <div id="map"></div>
+  </div>
+
+  <div class="grid" id="cards"></div>
+
+  <div class="card hidden" id="aiCard">
+    <h2>🤖 Dự báo thử nghiệm (AI)</h2>
+    <div id="ai" class="muted"></div>
+  </div>
+</main>
+
+<footer>
+  Dữ liệu cập nhật tự động từ cảm biến qua MQTT → Gateway → Cloud. Vị trí trên bản đồ là minh hoạ.
+  · <a href="admin.html">Dành cho đơn vị quản lý</a>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="common.js"></script>
+<script>
+let S = null, map, markers = {};
+
+function initMap(meta) {
+    const pts = Object.values(meta).filter(m => m.lat);
+    const center = pts.length ? [pts[0].lat, pts[0].lng] : [21.0379, 105.7826];
+    map = L.map('map').setView(center, 17);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+}
+
+function render() {
+    if (!S) return;
+    const edge = S.edge || { nodes: {} };
+    const nodes = edge.nodes || {};
+    const ids = Array.from(new Set([...Object.keys(S.meta), ...Object.keys(nodes)])).sort();
+
+    const worst = edge.worst;
+    document.getElementById('overall').outerHTML = `<span id="overall" class="pill ${worst ? LEVEL[worst].cls : ''}">${
+        { green: '🟢 Khu vực an toàn', yellow: '🟡 Cần chú ý', red: '🔴 Có điểm nguy hiểm' }[worst] || 'Chưa có dữ liệu'}</span>`;
+    document.getElementById('updated').textContent = edge.ts ? 'Cập nhật ' + fmtTime(edge.ts) : '';
+    document.getElementById('simBanner').classList.toggle('hidden', !isSimulated(S.info));
+    document.getElementById('staleBanner').classList.toggle('hidden', !S.edge || S.gateway.online);
+    document.getElementById('spreadBanner').classList.toggle('hidden', !edge.spread);
+
+    document.getElementById('cards').innerHTML = ids.map(id => {
+        const n = nodes[id] || { kind: (S.meta[id] || {}).kind };
+        const offline = n.online === false || n.stale;
+        return `<div class="card">
+          <div class="row" style="justify-content:space-between"><h3>${esc(nodeName(id, S.meta))}</h3>${pill(n.level)}</div>
+          <div class="big">${n.data ? (n.kind === 'drain' ? n.data.L + '%' : n.data.h + ' cm') : '—'}</div>
+          <div class="muted">${n.kind === 'drain' ? 'Độ đầy cống' : 'Độ sâu ngập mặt đường'} · ${esc(reading(n))}</div>
+          <p style="margin:8px 0 0">${esc(adviceFor(n))}</p>
+          <div class="muted">${offline ? '⚠️ Điểm đo đang mất kết nối' : 'Cập nhật ' + ago(n.last_seen)}</div>
+        </div>`;
+    }).join('');
+
+    for (const id of ids) {
+        const m = S.meta[id];
+        if (!m || !m.lat) continue;
+        const n = nodes[id] || {};
+        const color = COLOR(n.online === false ? '' : n.level);
+        const html = `<b>${esc(m.name)}</b><br>${esc(reading(n))}<br>${esc(adviceFor(n))}`;
+        if (!markers[id]) markers[id] = L.circleMarker([m.lat, m.lng], { radius: 13, weight: 3, fillOpacity: .75 }).addTo(map);
+        markers[id].setStyle({ color, fillColor: color }).bindPopup(html);
+    }
+
+    const ai = S.ai;
+    document.getElementById('aiCard').classList.toggle('hidden', !ai);
+    if (ai) document.getElementById('ai').innerHTML =
+        `Mực nước cống dự báo sau 5 phút: <b>${ai.predicted_level_5m} cm</b> (${esc(ai.predicted_status)}) · ` +
+        `Nguy cơ ngập sau 30 phút: <b>${ai.prob_flood_30m}%</b>. <br>Mô hình đang thử nghiệm – chỉ mang tính tham khảo.`;
+}
+
+async function load() {
+    try { S = await api('api/state'); if (!map) initMap(S.meta); render(); } catch (e) { console.error(e); }
+}
+load();
+setInterval(load, 15000);
+setInterval(render, 5000);   // làm mới "x giây trước"
+connectWS((type, data) => {
+    if (!S) return;
+    if (type === 'state') S.edge = data;
+    else if (type === 'gateway') S.gateway = data;
+    else if (type === 'ai') S.ai = data;
+    else if (type === 'info') S.info[data.id] = data.info;
+    else return;
+    if (type === 'state') S.gateway.online = true;
+    render();
+});
+</script>
+</body>
+</html>

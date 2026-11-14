@@ -11,6 +11,9 @@ set MOSQUITTO_EXE=C:\Program Files\Mosquitto\mosquitto.exe
 :: ─── Config file (relative to this batch file's directory) ──────────────────
 set CONF_FILE=%~dp0mosquitto.conf
 
+:: Chay trong thu muc nay de duong dan "data/" trong mosquitto.conf hop le
+cd /d "%~dp0"
+
 :: ─── Create data dir if missing ──────────────────────────────────────────────
 if not exist "%~dp0data" mkdir "%~dp0data"
 

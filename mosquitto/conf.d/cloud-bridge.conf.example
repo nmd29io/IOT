@@ -1,0 +1,27 @@
+# MQTT bridge: Gateway (laptop) ⇄ Cloud
+# Sao chép thành cloud-bridge.conf (đã gitignore), điền IP máy ảo và mật khẩu EDGE_PASSWORD trong cloud/.env.
+# Không có file .conf trong thư mục này thì gateway chạy độc lập, không lên cloud.
+
+connection cloud
+address 203.0.113.10:1883
+remote_username edge
+remote_password doi-mat-khau-gateway
+remote_clientid flood-gateway-01
+try_private true
+cleansession false
+restart_timeout 5 30
+
+# Cloud biết gateway còn sống hay không: 1 = kết nối, 0 = mất (Last Will của bridge)
+notifications true
+notification_topic flood/edge/bridge
+
+# LÊN cloud: chỉ dữ liệu ĐÃ XỬ LÝ tại Edge + heartbeat (không đẩy dữ liệu thô 2 s/lần)
+topic flood/edge/state out 0
+topic flood/edge/log out 1
+topic flood/edge/incident out 1
+topic flood/+/info out 1
+topic flood/+/status out 1
+topic flood/ai/prediction out 0
+
+# XUỐNG gateway: lệnh từ Web console. Node-RED kiểm tra rồi mới chuyển cho node.
+topic flood/cloud/# in 1

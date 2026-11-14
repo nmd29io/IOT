@@ -2,6 +2,7 @@
 
 # ─── Credentials & Secrets ───────────────────────────────────────────────────
 firmware/config.h
+firmware/**/config.h
 config/secrets.env
 *.env
 .env
@@ -18,6 +19,14 @@ node_modules/
 .node_modules/
 # flows_cred.json contains encrypted credentials — exclude if not encrypted
 nodered/flows_cred.json
+nodered/.node-red/flows_cred.json
+# Chứa _credentialSecret dùng để giải mã flows_cred.json — tuyệt đối không commit
+nodered/.node-red/.config.runtime.json*
+nodered/.node-red/.config.*.json.backup
+nodered/.node-red/.flows*.backup
+nodered/.node-red/context/
+nodered/.node-red/lib/
+nodered/.node-red/.sessions.json
 
 # ─── Mosquitto runtime data ───────────────────────────────────────────────────
 mosquitto/data/mosquitto.db
@@ -41,3 +50,11 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# ─── Cloud & bridge (chứa mật khẩu) ─────────────────────────────────────────
+mosquitto/conf.d/*.conf
+cloud/.env
+cloud/server/data/
+nodered/.node-red/package-lock.json
+!mosquitto/conf.d/00-default.conf
+nodered/.node-red/.config.nodes.json

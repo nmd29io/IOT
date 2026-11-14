@@ -1,0 +1,56 @@
+# Triển khai tầng Cloud trên một máy ảo (Ubuntu + Docker):
+#   cp .env.example .env   # rồi sửa mật khẩu, DOMAIN
+#   docker compose up -d --build
+services:
+  mosquitto:                       # Broker cloud: chỉ nhận kết nối có mật khẩu (gateway "edge", server "server")
+    image: eclipse-mosquitto:2.0.20
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - mosquitto_data:/mosquitto/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mosquitto_passwd -c -b /mosquitto/passwd edge "$$EDGE_PASSWORD" &&
+        mosquitto_passwd -b /mosquitto/passwd server "$$SERVER_PASSWORD" &&
+        chown mosquitto:mosquitto /mosquitto/passwd && chmod 0700 /mosquitto/passwd &&
+        exec mosquitto -c /mosquitto/config/mosquitto.conf
+
+  server:                          # Server + web app do nhóm tự viết
+    build: ./server
+    restart: unless-stopped
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_USER: server
+      MQTT_PASSWORD: ${SERVER_PASSWORD}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      DB_PATH: /data/flood.db
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - server_data:/data
+    depends_on:
+      - mosquitto
+
+  caddy:                           # Reverse proxy, tự xin chứng chỉ HTTPS (Let's Encrypt) cho DOMAIN
+    image: caddy:2.8.4
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - server
+
+volumes:
+  mosquitto_data:
+  server_data:
+  caddy_data:

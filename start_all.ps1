@@ -1,65 +1,102 @@
-# start_all.ps1 — Khoi dong toan bo he thong Flood Monitor
-# Chay: Mosquitto Broker + Node-RED (Edge IT) + Edge ML Service (AI Predictor)
-
-Write-Host ""
-Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "   HE THONG GIAM SAT VA CANH BAO NGAP UNG DO THI" -ForegroundColor Cyan
-Write-Host "   Khoi dong MQTT Broker, AI ML Engine va Dashboard..." -ForegroundColor Yellow
-Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host ""
+# start_all.ps1 - Khoi dong toan bo he thong Flood Monitor tren may Edge (laptop)
+# Mosquitto Broker + Edge ML Service + Node-RED (Edge IT + Dashboard)
+# Bi mat (Telegram chat id, ThingSpeak key) doc tu config\secrets.env (khong commit).
 
 $baseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$problems = @()
 
-# 1. Khoi dong Mosquitto MQTT Broker
-$mosquittoExe = "C:\Program Files\Mosquitto\mosquitto.exe"
-$mosquittoConf = Join-Path $baseDir "mosquitto\mosquitto.conf"
+Write-Host ""
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "   HE THONG IOT GIAM SAT VA CANH BAO NGAP UNG DO THI" -ForegroundColor Cyan
+Write-Host "==========================================================" -ForegroundColor Cyan
 
-if (Test-Path $mosquittoExe) {
-    Write-Host "[1/3] Khoi dong Mosquitto MQTT Broker (port 1883)..." -ForegroundColor Green
-    Start-Process -FilePath $mosquittoExe -ArgumentList "-v", "-c", "`"$mosquittoConf`""
+# 0. Nap bien moi truong tu config\secrets.env (dang KEY=VALUE)
+$secrets = Join-Path $baseDir "config\secrets.env"
+if (Test-Path $secrets) {
+    Get-Content $secrets | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+            $k, $v = $line.Split("=", 2)
+            [Environment]::SetEnvironmentVariable($k.Trim(), $v.Trim(), "Process")
+        }
+    }
+    Write-Host "[0/3] Da nap config\secrets.env" -ForegroundColor Green
 } else {
-    Write-Host "[ERROR] Khong tim thay mosquitto.exe tai $mosquittoExe" -ForegroundColor Red
+    Write-Host "[0/3] Chua co config\secrets.env -> Telegram/ThingSpeak tat (he thong van chay)" -ForegroundColor Yellow
 }
 
-Start-Sleep -Seconds 2
+# 1. Mosquitto (chay trong thu muc mosquitto\ de duong dan tuong doi trong mosquitto.conf dung)
+$mosquittoExe = $null
+foreach ($c in @("C:\Program Files\Mosquitto\mosquitto.exe", "C:\Program Files (x86)\Mosquitto\mosquitto.exe")) {
+    if (Test-Path $c) { $mosquittoExe = $c; break }
+}
+if (-not $mosquittoExe) { $mosquittoExe = (Get-Command mosquitto -ErrorAction SilentlyContinue).Source }
+$mosquittoDir = Join-Path $baseDir "mosquitto"
+New-Item -ItemType Directory -Force (Join-Path $mosquittoDir "data") | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $mosquittoDir "conf.d") | Out-Null
+if ($mosquittoExe) {
+    Write-Host "[1/3] Khoi dong Mosquitto (port 1883)..." -ForegroundColor Green
+    Start-Process -FilePath $mosquittoExe -ArgumentList "-v", "-c", "mosquitto.conf" -WorkingDirectory $mosquittoDir
+    Start-Sleep -Seconds 2
+} else {
+    Write-Host "[1/3] LOI: chua cai Mosquitto" -ForegroundColor Red
+    $problems += "Cai Mosquitto: winget install EclipseFoundation.Mosquitto  (hoac tai tu https://mosquitto.org/download/)"
+}
 
-# 2. Khoi dong Edge ML Service (Python AI Predictor)
+# 2. Edge ML Service: can Python co paho-mqtt, pandas, numpy, scikit-learn, joblib
 $pythonExe = Join-Path $baseDir ".venv\Scripts\python.exe"
-$mlScript = Join-Path $baseDir "ml\edge_ml_service.py"
-
-if (Test-Path $pythonExe) {
-    Write-Host "[2/3] Khoi dong Edge ML AI Service (Multi-Horizon RF + Manning/GIS Engine)..." -ForegroundColor Green
-    Start-Process -FilePath $pythonExe -ArgumentList "-u", "`"$mlScript`""
+if (-not (Test-Path $pythonExe)) { $pythonExe = $null }
+if ($pythonExe) {
+    & $pythonExe -c "import paho.mqtt, pandas, numpy, sklearn, joblib" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[2/3] Khoi dong Edge ML Service..." -ForegroundColor Green
+        Start-Process -FilePath $pythonExe -ArgumentList "-u", "`"$(Join-Path $baseDir 'ml\edge_ml_service.py')`""
+    } else {
+        Write-Host "[2/3] BO QUA ML: .venv thieu thu vien" -ForegroundColor Yellow
+        $problems += "Cai thu vien ML: .venv\Scripts\pip install -r ml\requirements.txt"
+    }
 } else {
-    Write-Host "[WARN] Khong tim thay Python venv, bo qua khoi dong ML Service" -ForegroundColor Yellow
+    Write-Host "[2/3] BO QUA ML: chua co .venv (khong anh huong canh bao chinh)" -ForegroundColor Yellow
+    $problems += "Tao moi truong Python cho ML: py -3.11 -m venv .venv ; .venv\Scripts\pip install -r ml\requirements.txt"
 }
 
-Start-Sleep -Seconds 2
-
-# 3. Khoi dong Node-RED
-$nodeRedCmd = "C:\Users\Duc\AppData\Local\pnpm\node-red.cmd"
+# 3. Node-RED
 $userDir = Join-Path $baseDir "nodered\.node-red"
-
-if (Test-Path $nodeRedCmd) {
-    Write-Host "[3/3] Khoi dong Node-RED Edge IT (port 1880)..." -ForegroundColor Green
-    Start-Process -FilePath $nodeRedCmd -ArgumentList "--userDir", "`"$userDir`""
+if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
+    Write-Host "[3/3] LOI: chua cai Node.js" -ForegroundColor Red
+    $problems += "Cai Node.js LTS: https://nodejs.org"
 } else {
-    Write-Host "[ERROR] Khong tim thay node-red tai $nodeRedCmd" -ForegroundColor Red
+    # Palette (node-red-dashboard, node-red-contrib-telegrambot) nam trong userDir\node_modules
+    if (-not (Test-Path (Join-Path $userDir "node_modules\node-red-dashboard"))) {
+        Write-Host "[3/3] Cai palette Node-RED lan dau (1-2 phut)..." -ForegroundColor Yellow
+        & npm.cmd install --prefix "$userDir" --no-audit --no-fund
+    }
+    $nodeRed = (Get-Command node-red.cmd -ErrorAction SilentlyContinue).Source
+    if (-not $nodeRed) {
+        foreach ($c in @("$env:APPDATA\npm\node-red.cmd", "$env:LOCALAPPDATA\pnpm\node-red.cmd")) {
+            if (Test-Path $c) { $nodeRed = $c; break }
+        }
+    }
+    Write-Host "[3/3] Khoi dong Node-RED (port 1880)..." -ForegroundColor Green
+    if ($nodeRed) {
+        Start-Process -FilePath $nodeRed -ArgumentList "--userDir", "`"$userDir`""
+    } else {
+        # Goi npx.cmd (KHONG goi "npx": PowerShell se mo npx.ps1 bang trinh soan thao thay vi chay)
+        Write-Host "      (chua cai node-red global -> chay qua npx, lan dau se tai ve)" -ForegroundColor DarkGray
+        Start-Process -FilePath "npx.cmd" -ArgumentList "--yes", "node-red@4", "--userDir", "`"$userDir`""
+    }
+    Start-Sleep -Seconds 8
+    Start-Process "http://localhost:1880/ui"
 }
 
-Start-Sleep -Seconds 5
-
-# 4. Mo Dashboard tren trinh duyet
 Write-Host ""
-Write-Host "Dang mo Dashboard tai http://localhost:1880/ui ..." -ForegroundColor Magenta
-Start-Process "http://localhost:1880/ui"
-
-Write-Host ""
-Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "   HE THONG DA KHOI DONG THANH CONG!" -ForegroundColor Green
-Write-Host "   - Dashboard giam sat: http://localhost:1880/ui" -ForegroundColor White
-Write-Host "   - Node-RED Flow Editor: http://localhost:1880" -ForegroundColor White
-Write-Host "   - MQTT Broker: localhost:1883" -ForegroundColor White
-Write-Host "   - AI Engine: Dang du bao muc nuoc da tang +5m, +15m, +30m, +60m tich hop Manning & GIS" -ForegroundColor White
-Write-Host "==========================================================" -ForegroundColor Cyan
+if ($problems.Count -gt 0) {
+    Write-Host "Can xu ly truoc khi demo:" -ForegroundColor Yellow
+    $problems | ForEach-Object { Write-Host "   - $_" -ForegroundColor Yellow }
+    Write-Host ""
+}
+Write-Host "   Dashboard : http://localhost:1880/ui   (tab 'Quan ly thiet bi' de cau hinh tu xa)" -ForegroundColor White
+Write-Host "   Flow      : http://localhost:1880" -ForegroundColor White
+Write-Host "   Broker    : localhost:1883  |  Kiem tra: mosquitto_sub -t `"flood/#`" -v" -ForegroundColor White
+Write-Host "   Mo phong  : simulate_nodes.bat (khi chua co mach that)" -ForegroundColor White
 Write-Host ""

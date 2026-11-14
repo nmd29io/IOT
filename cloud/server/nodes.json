@@ -1,0 +1,15 @@
+{
+  "_ghi_chu": "Thông tin hiển thị của từng điểm đo trên bản đồ. Toạ độ là VỊ TRÍ MINH HOẠ (khu vực ĐH Công nghệ – 144 Xuân Thủy). Thêm node mới: thêm một mục cùng mã NODE_ID.",
+  "cong1": {
+    "name": "Cống thoát nước – Xuân Thủy",
+    "kind": "drain",
+    "lat": 21.03795,
+    "lng": 105.78205
+  },
+  "duong1": {
+    "name": "Mặt đường – Xuân Thủy (trước cổng ĐHQGHN)",
+    "kind": "road",
+    "lat": 21.03742,
+    "lng": 105.78318
+  }
+}

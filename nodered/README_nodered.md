@@ -7,7 +7,7 @@
 | Node.js | ≥ 18 LTS | https://nodejs.org |
 | Node-RED | ≥ 3.1 | `npm install -g --unsafe-perm node-red` |
 | node-red-dashboard | latest | Cài qua Palette Manager |
-| node-red-contrib-telegram | latest | Cài qua Palette Manager |
+| node-red-contrib-telegrambot | ≥ 19 | Cài qua Palette Manager |
 
 ---
 
@@ -28,7 +28,7 @@ Vào **Menu (☰) → Manage Palette → Install** và tìm cài:
 | Package | Chức năng |
 |---|---|
 | `node-red-dashboard` | Gauge, Chart, Button, Text UI |
-| `node-red-contrib-telegram` | Gửi cảnh báo qua Telegram Bot |
+| `node-red-contrib-telegrambot` | Gửi cảnh báo qua Telegram Bot |
 
 Sau khi cài xong, **restart Node-RED**.
 
@@ -89,13 +89,11 @@ $env:THINGSPEAK_WRITE_API_KEY = "XXXXXXXX"
 node-red
 ```
 
-**Cách 2 — Trực tiếp trong flow:**
-
-Double-click node **"Set Global Credentials"** và sửa giá trị hardcode (không khuyến nghị cho production).
+**Cách 2 — File `config/secrets.env`** (khuyến nghị): `start_all.ps1` tự nạp file này trước khi chạy Node-RED.
 
 **Cấu hình Telegram Bot Config node:**
 
-1. Double-click node **"Send Telegram Alert"**
+1. Double-click node **"Gửi Telegram"**
 2. Click ✏️ bên cạnh Bot
 3. Điền **Bot Token** vào trường Token
 4. Nhấn **Update → Done → Deploy**
@@ -123,12 +121,16 @@ Sau khi deploy thành công:
 
 **URL Dashboard**: http://localhost:1880/ui
 
-Các widget hiển thị:
-- 🟢 **Gauge Độ Đầy Cống** — % mực nước trong cống
-- 🌊 **Gauge Độ Sâu Ngập** — cm trên mặt đường
-- 📊 **Chart lịch sử** — dữ liệu 1 giờ gần nhất
-- 🚨 **Cảnh báo tổng hợp** — kết hợp 2 node
-- 🔇 **Nút Tắt Còi** — gửi lệnh tắt buzzer đến node duong1
+**Tab "Flood Monitor"**
+- Cống 1: độ đầy L, mức cảnh báo, mực nước, tốc độ dâng (cửa sổ 1 phút), kết nối
+- Đường 1: độ sâu ngập, mức đèn tại chỗ, trạng thái còi, nút 🔇 Tắt còi / 🔔 Bật lại còi
+- Cảnh báo & yêu cầu vận hành: tình trạng chung, yêu cầu bật bơm/mở van đang chờ, nút ✅ Xác nhận, nhật ký sự kiện
+- Dự báo AI, biểu đồ lịch sử
+
+**Tab "Quản lý thiết bị"**
+- Bảng thiết bị (online/offline, mức, số đo, RSSI, uptime, lỗi đo, firmware) – node mới tự xuất hiện
+- Form cấu hình từ xa cho cong1 / duong1 (gửi retained `flood/<id>/config`, node xác nhận qua `flood/<id>/event`)
+- Nút hiệu chuẩn: đo lại H (cống rỗng) / d0 (đường khô)
 
 ---
 
@@ -147,13 +149,17 @@ Các widget hiển thị:
 ## 10. Cấu trúc Flow
 
 ```
-MQTT cong1/level  →  Parse & Rise Rate  →  Hysteresis Alert  ─┬→ Dashboard Widgets
-                                                                ├→ ThingSpeak
-                                                                └→ Combined Alert ──→ Telegram
-
-MQTT duong1/depth →  Parse duong1       →  Hysteresis Alert  ─┬→ Dashboard Widgets
-                                                                ├→ ThingSpeak
-                                                                └→ Combined Alert
-
-UI Button "Tắt Còi" → MQTT Out flood/duong1/buzzer
+flood/+/level  → Định tuyến (có L,m = cống | có h = đường)
+                   ├→ Node cống: TB trượt 5 mẫu, v theo 1 phút, hysteresis + giữ 30 s ─┐
+                   └→ Node đường: lấy mức do ESP32 tự phân ───────────────────────────┤
+flood/+/status (Last Will) ─────────────────────────────────────────────────────────────┤
+Inject 30 s (nhắc lại 10 phút, watchdog 30 s) ──────────────────────────────────────────┤
+Telegram callback "✅ Đã xử lý" / nút Xác nhận dashboard / lệnh /status ────────────────┤
+                                                                                        ▼
+                                                     Bộ quyết định cảnh báo & sự cố → Telegram, Dashboard, Nhật ký
+flood/+/info   → bảng thiết bị, điền form cấu hình
+flood/+/event  → nhật ký; "calibrated" → cập nhật lại config retained
+Form cấu hình  → kiểm tra → flood/<id>/config (retained)
+Nút còi / hiệu chuẩn → flood/duong1/alarm/cmd, flood/<id>/cmd
+Inject 15 s    → gộp 2 node → ThingSpeak (1 request)
 ```

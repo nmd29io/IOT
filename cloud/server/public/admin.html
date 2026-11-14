@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console quản lý ngập</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>🛠 Console quản lý – Giám sát ngập</h1>
+    <div class="sub">Cloud · dữ liệu từ gateway qua MQTT bridge</div>
+  </div>
+  <div class="row">
+    <span id="gw" class="pill outline"><span class="dot"></span> Gateway</span>
+    <span id="overall" class="pill">—</span>
+    <button id="logout" class="hidden">Đăng xuất</button>
+  </div>
+</header>
+
+<main>
+  <!-- Đăng nhập -->
+  <div class="card" id="loginCard" style="max-width:420px">
+    <h2>Đăng nhập</h2>
+    <label>Mã quản trị (ADMIN_TOKEN)</label><input id="tok" type="password" autocomplete="current-password">
+    <label style="margin-top:8px">Tên người xác nhận (hiện trong nhật ký)</label><input id="who" placeholder="VD: Huy – đội vận hành">
+    <div class="row" style="margin-top:12px"><button class="primary" id="loginBtn">Đăng nhập</button><span id="loginErr" class="muted"></span></div>
+  </div>
+
+  <div id="app" class="hidden" style="display:grid;gap:16px">
+    <div id="simBanner" class="banner info hidden">ℹ️ Đang nhận <b>dữ liệu mô phỏng</b> (firmware "sim").</div>
+    <div id="spreadBanner" class="banner danger hidden"></div>
+
+    <div class="card">
+      <h2>🚨 Yêu cầu vận hành</h2>
+      <div id="incidents"></div>
+      <h3 style="margin-top:14px">Thống kê 7 ngày</h3>
+      <div class="kpis" id="kpis"></div>
+    </div>
+
+    <div class="grid" id="nodeCards"></div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2>📈 Lịch sử</h2>
+        <div class="row">
+          <button data-h="1">1 giờ</button><button data-h="6" class="primary">6 giờ</button><button data-h="24">24 giờ</button><button data-h="72">3 ngày</button>
+        </div>
+      </div>
+      <div class="grid">
+        <div><h3>Cống: độ đầy (%) và tốc độ dâng (cm/phút)</h3><div class="chart-box"><canvas id="chDrain"></canvas></div></div>
+        <div><h3>Đường: độ sâu ngập (cm)</h3><div class="chart-box"><canvas id="chRoad"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📟 Thiết bị &amp; cấu hình từ xa</h2>
+      <div class="scroll"><table id="devTable"></table></div>
+      <div class="grid" id="cfgForms" style="margin-top:12px"></div>
+      <p class="muted">Lệnh từ web đi: Cloud → <code>flood/cloud/…</code> → Gateway kiểm tra hợp lệ → node. Kết quả node trả về hiện trong nhật ký.</p>
+    </div>
+
+    <div class="grid">
+      <div class="card"><h2>📋 Sự cố đã đóng</h2><div class="scroll"><table id="incHistory"></table></div></div>
+      <div class="card"><h2>📝 Nhật ký</h2><div class="log" id="log"></div></div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="common.js"></script>
+<script>
+let TOKEN = store.get('flood_admin_token') || '', WHO = store.get('flood_admin_name') || '';
+let S = null, HOURS = 6, charts = {};
+const $ = id => document.getElementById(id);
+
+const CFG_FIELDS = {
+    drain: [['H', 'H – cảm biến → đáy (cm)'], ['Hmax', 'Hmax – chiều sâu tính % (cm)'], ['period_s', 'Chu kỳ đo (s)']],
+    road: [['d0', 'd0 – cảm biến → mặt đường khô (cm)'], ['t_yellow', 'Ngưỡng VÀNG (cm)'], ['t_red', 'Ngưỡng ĐỎ (cm)'],
+           ['t_red_low', 'ĐỎ → VÀNG khi dưới (cm)'], ['t_yellow_low', 'VÀNG → XANH khi dưới (cm)'],
+           ['stable_s', 'Thời gian ổn định (s)'], ['period_s', 'Chu kỳ đo (s)']]
+};
+
+async function login(tok, who) {
+    try {
+        await api('api/login', { method: 'POST', body: { token: tok } });
+        TOKEN = tok; WHO = who || 'Quản lý';
+        store.set('flood_admin_token', TOKEN); store.set('flood_admin_name', WHO);
+        $('loginCard').classList.add('hidden'); $('app').classList.remove('hidden'); $('logout').classList.remove('hidden');
+        start();
+    } catch (e) { $('loginErr').textContent = e.message; store.del('flood_admin_token'); }
+}
+$('loginBtn').onclick = () => login($('tok').value, $('who').value);
+$('tok').onkeydown = e => { if (e.key === 'Enter') $('loginBtn').click(); };
+$('who').value = WHO;
+$('logout').onclick = () => { store.del('flood_admin_token'); location.reload(); };
+if (TOKEN) login(TOKEN, WHO);
+
+const authed = (path, opts = {}) => api(path, { ...opts, token: TOKEN });
+async function act(path, body, confirmText) {
+    if (confirmText && !confirm(confirmText)) return;
+    try { const r = await authed(path, { method: 'POST', body }); toast(r.message || 'Đã gửi'); }
+    catch (e) { toast('Lỗi: ' + e.message); }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function renderHeader() {
+    const g = S.gateway || {};
+    $('gw').innerHTML = `<span class="dot ${g.online ? 'on' : 'off'}"></span> Gateway ${g.online ? 'online' : 'mất kết nối'}` +
+        (g.edge_age_s !== null && g.edge_age_s !== undefined ? ` · ${g.edge_age_s}s` : '');
+    const e = S.edge || {};
+    $('overall').outerHTML = `<span id="overall" class="pill ${e.worst ? LEVEL[e.worst].cls : ''}">${esc(e.combined || 'Chưa có dữ liệu')}</span>`;
+    $('simBanner').classList.toggle('hidden', !isSimulated(S.info));
+    const sb = $('spreadBanner');
+    sb.classList.toggle('hidden', !e.spread);
+    if (e.spread) sb.textContent = `🌊 Ngập đang lan rộng – cống đã báo trước ${dur((e.lead_ms || 0) / 1000)} so với lúc nước lên mặt đường.`;
+}
+
+function renderIncidents() {
+    const list = (S.edge && S.edge.incidents) || [];
+    $('incidents').innerHTML = !list.length ? '<p class="muted">Không có yêu cầu nào đang mở.</p>' : list.map(i => `
+      <div class="row" style="justify-content:space-between;border-bottom:1px solid var(--border);padding:8px 0">
+        <div><b>${esc(nodeName(i.node, S.meta))}</b> – YÊU CẦU bật bơm / mở van<br>
+          <span class="muted">Từ ${fmtTime(i.start)} (${ago(i.start)}) · cao nhất ${i.max_L ?? '—'}% · nhắc ${i.reminders} lần</span></div>
+        ${i.ack ? `<span class="pill green">✅ ${esc(i.ack_by)} đã xác nhận</span>`
+                : `<button class="ok" onclick="act('api/ack',{key:'${esc(i.key)}',by:WHO})">✅ Xác nhận đã xử lý</button>`}
+      </div>`).join('');
+}
+
+function renderNodes() {
+    const nodes = (S.edge && S.edge.nodes) || {};
+    const ids = Array.from(new Set([...Object.keys(S.meta), ...Object.keys(nodes)])).sort();
+    $('nodeCards').innerHTML = ids.map(id => {
+        const n = nodes[id] || { kind: (S.meta[id] || {}).kind };
+        const conn = n.online === false ? '<span class="pill red">Offline</span>' : n.stale ? '<span class="pill yellow">Không có dữ liệu</span>' : '<span class="pill outline"><span class="dot on"></span> Online</span>';
+        const road = n.kind === 'road';
+        return `<div class="card">
+          <div class="row" style="justify-content:space-between"><h3>${esc(nodeName(id, S.meta))}</h3>${pill(n.level)}</div>
+          <div class="big">${n.data ? (road ? n.data.h + ' cm' : n.data.L + '%') : '—'}</div>
+          <div class="muted">${esc(reading(n))}${road && n.data ? (n.data.stable ? '' : ' · đang chờ ổn định') : ''}</div>
+          <div class="row" style="margin-top:8px">${conn}<span class="muted">${ago(n.last_seen)}</span></div>
+          ${road ? `<div class="row" style="margin-top:8px">
+              <span class="muted">Còi: ${n.level === 'red' ? (n.data && n.data.buzzer_muted ? '🔇 đã tắt' : '🔊 đang kêu') : 'tắt'}</span>
+              <button onclick="act('api/nodes/${id}/alarm',{action:'off'})">🔇 Tắt còi</button>
+              <button onclick="act('api/nodes/${id}/alarm',{action:'on'})">🔔 Bật lại</button></div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function renderDevices() {
+    const ids = Array.from(new Set([...Object.keys(S.info || {}), ...Object.keys((S.edge && S.edge.nodes) || {})])).sort();
+    $('devTable').innerHTML = '<tr><th>Node</th><th>Loại</th><th>Kết nối</th><th>RSSI</th><th>Uptime</th><th>Lỗi đo</th><th>Firmware</th><th>IP</th><th>Heartbeat</th><th></th></tr>' +
+        ids.map(id => {
+            const i = S.info[id] || {}, st = S.status[id] || {}, n = (S.edge && S.edge.nodes || {})[id] || {};
+            const online = n.online !== undefined ? n.online && !n.stale : st.status === 'online';
+            return `<tr><td><b>${esc(id)}</b></td><td>${{ drain: 'Cống', road: 'Đường' }[i.role || n.kind] || '?'}</td>
+              <td><span class="dot ${online ? 'on' : 'off'}"></span> ${online ? 'online' : 'offline'}</td>
+              <td>${i.rssi ?? '—'} dBm</td><td>${i.uptime_s !== undefined ? dur(i.uptime_s) : '—'}</td><td>${i.sensor_err ?? '—'}</td>
+              <td>${esc(i.fw || '—')}</td><td>${esc(i.ip || '—')}</td><td>${ago(i.received)}</td>
+              <td><button onclick="act('api/nodes/${id}/cmd',{cmd:'calibrate'},'Hiệu chuẩn ${id}? Chỉ thực hiện khi ${(i.role || n.kind) === 'road' ? 'mặt đường KHÔ' : 'cống RỖNG'}.')">📏 Hiệu chuẩn</button>
+                  <button onclick="act('api/nodes/${id}/cmd',{cmd:'report'})">↻ Báo cáo</button></td></tr>`;
+        }).join('');
+
+    // form cấu hình: chỉ dựng lại khi danh sách node đổi, để không xoá chữ đang gõ
+    const sig = ids.join(',');
+    if ($('cfgForms').dataset.sig === sig) return;
+    $('cfgForms').dataset.sig = sig;
+    $('cfgForms').innerHTML = ids.map(id => {
+        const i = S.info[id] || {}, kind = i.role || ((S.edge && S.edge.nodes || {})[id] || {}).kind;
+        const fields = CFG_FIELDS[kind];
+        if (!fields) return '';
+        const cfg = i.cfg || {};
+        return `<div class="kpi"><h3>Cấu hình ${esc(id)}</h3><div class="form">${fields.map(([k, l]) =>
+            `<div><label>${esc(l)}</label><input data-node="${id}" data-k="${k}" type="number" step="any" placeholder="${cfg[k] ?? ''}"></div>`).join('')}</div>
+            <button class="primary" onclick="sendCfg('${id}')">Gửi cấu hình</button>
+            <span class="muted">Ô trống = giữ nguyên (giá trị mờ là cấu hình node đang chạy).</span></div>`;
+    }).join('');
+}
+
+function sendCfg(id) {
+    const body = {};
+    document.querySelectorAll(`input[data-node="${id}"]`).forEach(el => { if (el.value !== '') body[el.dataset.k] = Number(el.value); });
+    if (!Object.keys(body).length) return toast('Chưa nhập giá trị nào');
+    act(`api/nodes/${id}/config`, body).then(() => document.querySelectorAll(`input[data-node="${id}"]`).forEach(el => (el.value = '')));
+}
+
+function renderAll() { if (!S) return; renderHeader(); renderIncidents(); renderNodes(); renderDevices(); }
+
+async function loadIncidents() {
+    const r = await authed('api/incidents');
+    const s = r.stats || {};
+    $('kpis').innerHTML = [
+        ['Số sự cố mức đỏ', s.n ?? 0], ['Phản hồi TB', dur(s.avg_response_s)],
+        ['Thời gian báo trước TB', dur(s.avg_lead_s)], ['Kéo dài TB', dur(s.avg_duration_s)], ['Không được xác nhận', s.unacked ?? 0]
+    ].map(([k, v]) => `<div class="kpi"><span class="muted">${k}</span><b>${v}</b></div>`).join('');
+    $('incHistory').innerHTML = '<tr><th>Bắt đầu</th><th>Node</th><th>Kéo dài</th><th>Cao nhất</th><th>Báo trước</th><th>Xác nhận</th></tr>' +
+        (r.items.length ? r.items.map(i => `<tr><td>${fmtDateTime(i.start)}</td><td>${esc(i.node)}</td><td>${dur(i.duration_s)}</td>
+          <td>${i.max_L ?? '—'}%</td><td>${dur(i.lead_s)}</td><td>${i.ack ? '✅ ' + esc(i.ack_by) + ' sau ' + dur(i.response_s) : '❌ không'}</td></tr>`).join('')
+          : '<tr><td colspan="6" class="muted">Chưa có sự cố nào.</td></tr>');
+}
+
+async function loadLog() {
+    const rows = await authed('api/events?limit=80');
+    $('log').innerHTML = rows.map(e => `<div><time>${fmtDateTime(e.ts)}</time>${esc(e.text)}</div>`).join('') || '<div class="muted">Chưa có sự kiện.</div>';
+}
+function prependLog(e) {
+    const el = document.createElement('div');
+    el.innerHTML = `<time>${fmtDateTime(e.ts)}</time>${esc(e.text)}`;
+    $('log').prepend(el);
+}
+
+// ── Biểu đồ ───────────────────────────────────────────────────────────────
+function makeChart(canvas, datasets, scales) {
+    const css = getComputedStyle(document.documentElement);
+    Chart.defaults.color = css.getPropertyValue('--muted').trim();
+    Chart.defaults.borderColor = css.getPropertyValue('--border').trim();
+    return new Chart(canvas, {
+        type: 'line',
+        data: { datasets },
+        options: {
+            animation: false, parsing: false, normalized: true, maintainAspectRatio: false,
+            interaction: { mode: 'nearest', axis: 'x', intersect: false },
+            elements: { point: { radius: 0 }, line: { borderWidth: 2, tension: .2 } },
+            scales: { x: { type: 'linear', ticks: { callback: v => fmtTime(v), maxTicksLimit: 6 } }, ...scales },
+            plugins: { tooltip: { callbacks: { title: it => fmtDateTime(it[0].parsed.x) } } }
+        }
+    });
+}
+async function loadHistory() {
+    const css = getComputedStyle(document.documentElement);
+    const c = n => css.getPropertyValue(n).trim();
+    const nodes = (S.edge && S.edge.nodes) || {};
+    const drainId = Object.keys(nodes).find(k => nodes[k].kind === 'drain') || 'cong1';
+    const roadId = Object.keys(nodes).find(k => nodes[k].kind === 'road') || 'duong1';
+    const [dr, rd] = await Promise.all([api(`api/history?node=${drainId}&hours=${HOURS}`), api(`api/history?node=${roadId}&hours=${HOURS}`)]);
+    const pts = (rows, k) => rows.filter(r => r[k] !== null).map(r => ({ x: r.ts, y: r[k] }));
+    if (!charts.d) {
+        charts.d = makeChart($('chDrain'), [
+            { label: 'Độ đầy (%)', data: [], borderColor: c('--accent'), yAxisID: 'y' },
+            { label: 'Tốc độ dâng (cm/phút)', data: [], borderColor: c('--yellow'), yAxisID: 'y1' }
+        ], { y: { min: 0, max: 100 }, y1: { position: 'right', grid: { drawOnChartArea: false } } });
+        charts.r = makeChart($('chRoad'), [{ label: 'Độ sâu ngập (cm)', data: [], borderColor: c('--red'), fill: false }], { y: { min: 0 } });
+    }
+    charts.d.data.datasets[0].data = pts(dr.rows, 'L');
+    charts.d.data.datasets[1].data = pts(dr.rows, 'v');
+    charts.r.data.datasets[0].data = pts(rd.rows, 'h');
+    charts.d.update(); charts.r.update();
+}
+document.querySelectorAll('[data-h]').forEach(b => b.onclick = () => {
+    HOURS = Number(b.dataset.h);
+    document.querySelectorAll('[data-h]').forEach(x => x.classList.toggle('primary', x === b));
+    loadHistory();
+});
+
+// ── Khởi động ─────────────────────────────────────────────────────────────
+let started = false;
+async function refresh() {
+    try { S = await authed('api/state'); renderAll(); } catch (e) { if (e.status === 401) { store.del('flood_admin_token'); location.reload(); } }
+}
+async function start() {
+    if (started) return;
+    started = true;
+    await refresh();
+    loadIncidents().catch(() => {}); loadLog().catch(() => {}); loadHistory().catch(() => {});
+    setInterval(refresh, 15000);
+    setInterval(() => loadHistory().catch(() => {}), 30000);
+    setInterval(() => { if (S) { renderIncidents(); renderNodes(); } }, 5000);
+    connectWS((type, data) => {
+        if (!S) return;
+        if (type === 'state') { S.edge = data; S.gateway.online = true; renderAll(); }
+        else if (type === 'gateway') { S.gateway = data; renderHeader(); }
+        else if (type === 'info') { S.info[data.id] = { ...(S.info[data.id] || {}), ...data.info }; renderDevices(); }
+        else if (type === 'log') prependLog(data);
+        else if (type === 'incident') loadIncidents().catch(() => {});
+    }, TOKEN);
+}
+</script>
+</body>
+</html>

@@ -1,987 +1,1739 @@
 [
-  {
-    "id": "tab_flood_main",
-    "type": "tab",
-    "label": "Flood Monitor Main",
-    "disabled": false,
-    "info": "Urban Flood Monitoring & Alert System — main flow"
-  },
-  {
-    "id": "tab_dashboard",
-    "type": "tab",
-    "label": "Dashboard Config",
-    "disabled": false,
-    "info": "Dashboard UI configuration nodes"
-  },
-  {
-    "id": "ui_group_cong1",
-    "type": "ui_group",
-    "name": "Cống 1 — Mực Nước",
-    "tab": "ui_tab_flood",
-    "order": 1,
-    "disp": true,
-    "width": "6",
-    "collapse": false
-  },
-  {
-    "id": "ui_group_duong1",
-    "type": "ui_group",
-    "name": "Đường 1 — Ngập Mặt Đường",
-    "tab": "ui_tab_flood",
-    "order": 2,
-    "disp": true,
-    "width": "6",
-    "collapse": false
-  },
-  {
-    "id": "ui_group_alert",
-    "type": "ui_group",
-    "name": "Cảnh Báo Tổng Hợp",
-    "tab": "ui_tab_flood",
-    "order": 4,
-    "disp": true,
-    "width": "12",
-    "collapse": false
-  },
-  {
-    "id": "ui_group_chart",
-    "type": "ui_group",
-    "name": "Lịch Sử Dữ Liệu",
-    "tab": "ui_tab_flood",
-    "order": 5,
-    "disp": true,
-    "width": "12",
-    "collapse": false
-  },
-  {
-    "id": "ui_tab_flood",
-    "type": "ui_tab",
-    "name": "Flood Monitor",
-    "icon": "dashboard",
-    "order": 1,
-    "disp": true
-  },
-  {
-    "id": "mqtt_in_cong1_level",
-    "type": "mqtt in",
-    "z": "tab_flood_main",
-    "name": "cong1/level",
-    "topic": "flood/cong1/level",
-    "qos": "1",
-    "datatype": "json",
-    "broker": "mqtt_broker_config",
-    "x": 120,
-    "y": 80,
-    "wires": [
-      [
-        "fn_parse_cong1"
-      ]
-    ]
-  },
-  {
-    "id": "mqtt_in_cong1_online",
-    "type": "mqtt in",
-    "z": "tab_flood_main",
-    "name": "cong1/online",
-    "topic": "flood/cong1/online",
-    "qos": "1",
-    "datatype": "utf8",
-    "broker": "mqtt_broker_config",
-    "x": 120,
-    "y": 140,
-    "wires": [
-      [
-        "fn_online_cong1"
-      ]
-    ]
-  },
-  {
-    "id": "mqtt_in_duong1_depth",
-    "type": "mqtt in",
-    "z": "tab_flood_main",
-    "name": "duong1/depth",
-    "topic": "flood/duong1/depth",
-    "qos": "1",
-    "datatype": "json",
-    "broker": "mqtt_broker_config",
-    "x": 120,
-    "y": 320,
-    "wires": [
-      [
-        "fn_parse_duong1"
-      ]
-    ]
-  },
-  {
-    "id": "mqtt_in_duong1_online",
-    "type": "mqtt in",
-    "z": "tab_flood_main",
-    "name": "duong1/online",
-    "topic": "flood/duong1/online",
-    "qos": "1",
-    "datatype": "utf8",
-    "broker": "mqtt_broker_config",
-    "x": 120,
-    "y": 380,
-    "wires": [
-      [
-        "fn_online_duong1"
-      ]
-    ]
-  },
-  {
-    "id": "fn_parse_cong1",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Parse & Rise Rate cong1",
-    "func": "// ── Validate payload ────────────────────────────────────────────────────\nvar p = msg.payload;\nif (typeof p !== 'object' || p === null) {\n    node.warn('cong1: invalid payload');\n    return null;\n}\n\nvar levelCm  = parseFloat(p.level_cm) || 0;\nlevelCm = Math.max(0, Math.min(180, levelCm));\nvar fillPct  = parseFloat(p.fill_pct) || ((levelCm / 180.0) * 100);\nfillPct = Math.max(0, Math.min(100, fillPct));\nvar status   = p.status || 'green';\n\n// ── Rate calculation with anti-spike protection ────────────────────────\nvar now = Date.now();\nvar prev = context.get('prev') || { level: levelCm, time: now, rate: 0.0 };\nvar dtSec = (now - prev.time) / 1000.0;\n\nvar calcRate = prev.rate;\nif (dtSec >= 2.0) {\n    var dtMin = dtSec / 60.0;\n    calcRate = (levelCm - prev.level) / dtMin;\n    calcRate = Math.max(-25.0, Math.min(25.0, calcRate));\n    calcRate = Math.round(calcRate * 10) / 10;\n    context.set('prev', { level: levelCm, time: now, rate: calcRate });\n} else if (p.rise_rate !== undefined && !isNaN(parseFloat(p.rise_rate))) {\n    calcRate = Math.max(-25.0, Math.min(25.0, parseFloat(p.rise_rate)));\n    calcRate = Math.round(calcRate * 10) / 10;\n}\n\n// ── Store for downstream nodes & flow context ──────────────────────────\nflow.set('cong1_level',   levelCm);\nflow.set('cong1_fill',    fillPct);\nflow.set('cong1_rate',    calcRate);\nflow.set('cong1_status',  status);\n\n// ── Build enriched payload ───────────────────────────────────────────────\nmsg.payload = {\n    level_cm : Math.round(levelCm * 10) / 10,\n    fill_pct : Math.round(fillPct * 10) / 10,\n    rise_rate: calcRate,\n    status   : status,\n    timestamp: now\n};\n\nreturn msg;\n",
-    "outputs": 1,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "x": 360,
-    "y": 80,
-    "wires": [
-      [
-        "fn_hysteresis_cong1",
-        "debug_cong1"
-      ]
-    ]
-  },
-  {
-    "id": "fn_hysteresis_cong1",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Hysteresis Alert cong1",
-    "func": "var p       = msg.payload;\nvar levelCm = parseFloat(p.level_cm) || 0;\nvar fillPct = parseFloat(p.fill_pct) || 0;\nvar rate    = parseFloat(p.rise_rate) || 0;\n\n// State: 0=green, 1=yellow, 2=red\nvar state   = flow.get('cong1_alert_state') || 0;\n\n// Rate override → RED immediately if rapid rise > 5 cm/min\nif (rate > 5) {\n    state = 2;\n} else {\n    switch (state) {\n        case 0: // GREEN\n            if (fillPct >= 60) state = 1;\n            break;\n        case 1: // YELLOW\n            if      (fillPct < 50) state = 0;\n            else if (fillPct >= 80) state = 2;\n            break;\n        case 2: // RED\n            if (fillPct < 70) state = 1;\n            break;\n    }\n}\n\nflow.set('cong1_alert_state', state);\n\nvar stateStr   = ['green','yellow','red'][state];\nvar stateVN    = ['AN TOÀN','CẢNH BÁO','NGUY HIỂM'][state];\nvar stateColor = ['#2ecc71','#f39c12','#e74c3c'][state];\n\np.alert_state  = state;\np.status       = stateStr;\np.status_vn    = stateVN;\np.state_color  = stateColor;\n\nflow.set('cong1_status', stateStr);\n\n// Output 1: Object for backend decisions & ThingSpeak\nvar msgData = { payload: p };\n\n// Output 2: Pure number float for Gauge Fill %\nvar msgGauge = { payload: Math.round(fillPct * 10) / 10 };\n\n// Output 3: Status string for UI text\nvar msgStatus = { payload: stateVN };\n\n// Output 4: Rate string for UI text\nvar rateStr = (rate >= 0 ? '+' : '') + rate.toFixed(1) + ' cm/phút';\nvar msgRate = { payload: rateStr };\n\n// Output 5: Data points for History Chart\nvar msgChartLevel = { topic: 'Mực nước (cm)', payload: Math.round(levelCm * 10) / 10 };\nvar msgChartFill  = { topic: 'Độ đầy (%)', payload: Math.round(fillPct * 10) / 10 };\n\nreturn [msgData, msgGauge, msgStatus, msgRate, [msgChartLevel, msgChartFill]];\n",
-    "outputs": 5,
-    "noerr": 0,
-    "x": 620,
-    "y": 80,
-    "wires": [
-      [
-        "fn_combined_alert",
-        "fn_thingspeak_cong1"
-      ],
-      [
-        "ui_gauge_fill"
-      ],
-      [
-        "ui_text_cong1_status"
-      ],
-      [
-        "ui_text_rise_rate"
-      ],
-      [
-        "ui_chart_cong1"
-      ]
-    ]
-  },
-  {
-    "id": "fn_parse_duong1",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Parse duong1",
-    "func": "var p = msg.payload;\nif (typeof p !== 'object' || p === null) {\n    node.warn('duong1: invalid payload');\n    return null;\n}\n\nvar depthCm = parseFloat(p.depth_cm) || 0;\ndepthCm = Math.max(0, Math.min(100, depthCm));\nvar status  = p.status || 'green';\n\nflow.set('duong1_depth',  depthCm);\nflow.set('duong1_status', status);\n\nmsg.payload = {\n    depth_cm : Math.round(depthCm * 10) / 10,\n    status   : status,\n    timestamp: Date.now()\n};\n\nreturn msg;\n",
-    "outputs": 1,
-    "noerr": 0,
-    "x": 360,
-    "y": 320,
-    "wires": [
-      [
-        "fn_hysteresis_duong1",
-        "debug_duong1"
-      ]
-    ]
-  },
-  {
-    "id": "fn_hysteresis_duong1",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Hysteresis Alert duong1",
-    "func": "var p     = msg.payload;\nvar depth = parseFloat(p.depth_cm) || 0;\n\nvar state = flow.get('duong1_alert_state') || 0;\n\nswitch (state) {\n    case 0: // GREEN\n        if (depth >= 5)  state = 1;\n        break;\n    case 1: // YELLOW\n        if      (depth < 3)  state = 0;\n        else if (depth >= 15) state = 2;\n        break;\n    case 2: // RED\n        if (depth < 10) state = 1;\n        break;\n}\n\nflow.set('duong1_alert_state', state);\n\nvar stateStr   = ['green','yellow','red'][state];\nvar stateVN    = ['AN TOÀN','CẢNH BÁO','NGẬP'][state];\nvar stateColor = ['#2ecc71','#f39c12','#e74c3c'][state];\n\np.alert_state = state;\np.status      = stateStr;\np.status_vn   = stateVN;\np.state_color = stateColor;\n\nflow.set('duong1_status', stateStr);\n\n// Output 1: Object for combined alert & ThingSpeak\nvar msgData = { payload: p };\n\n// Output 2: Pure number float for Gauge Depth cm\nvar msgGauge = { payload: Math.round(depth * 10) / 10 };\n\n// Output 3: Status string for UI text\nvar msgStatus = { payload: stateVN };\n\n// Output 4: Data point for History Chart\nvar msgChart = { topic: 'Độ sâu ngập (cm)', payload: Math.round(depth * 10) / 10 };\n\nreturn [msgData, msgGauge, msgStatus, msgChart];\n",
-    "outputs": 4,
-    "noerr": 0,
-    "x": 620,
-    "y": 320,
-    "wires": [
-      [
-        "fn_combined_alert",
-        "fn_thingspeak_duong1"
-      ],
-      [
-        "ui_gauge_depth"
-      ],
-      [
-        "ui_text_duong1_status"
-      ],
-      [
-        "ui_chart_duong1"
-      ]
-    ]
-  },
-  {
-    "id": "fn_combined_alert",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Combined Alert Decision",
-    "func": "var cong1Status  = flow.get('cong1_status')  || 'green';\nvar duong1Status = flow.get('duong1_status') || 'green';\nvar fillPct  = flow.get('cong1_fill')   || 0;\nvar riseRate = flow.get('cong1_rate')   || 0;\nvar depthCm  = flow.get('duong1_depth') || 0;\n\nvar combinedLevel = 0; // 0=ok, 1=warning, 2=danger, 3=critical\nvar combinedText  = '';\nvar combinedColor = '#2ecc71';\nvar telegramMsg   = null;\n\nif (cong1Status === 'red' && duong1Status === 'red') {\n    combinedLevel = 3;\n    combinedText  = '🆘 NGẬP NGHIÊM TRỌNG';\n    combinedColor = '#8e44ad';\n    telegramMsg   = '🆘 NGẬP NGHIÊM TRỌNG: Cống tràn + mặt đường ngập ' + depthCm + ' cm. KHẨN CẤP!';\n} else if (duong1Status === 'red') {\n    combinedLevel = 2;\n    combinedText  = '🌊 NGẬP ĐƯỜNG';\n    combinedColor = '#e74c3c';\n    telegramMsg   = '🌊 NGẬP ĐƯỜNG: Độ sâu ngập ' + depthCm + ' cm. Yêu cầu điều tiết giao thông và bơm nước!';\n} else if (cong1Status === 'red') {\n    combinedLevel = 2;\n    combinedText  = '🚨 NGUY HIỂM: CỐNG SẮP TRÀN';\n    combinedColor = '#e74c3c';\n    telegramMsg   = '🚨 NGUY HIỂM: Cống sắp tràn! Mực nước ' + fillPct + '%, dâng ' + riseRate + ' cm/phút. Yêu cầu bật bơm/mở van ngay!';\n} else if (cong1Status === 'yellow' || duong1Status === 'yellow') {\n    combinedLevel = 1;\n    combinedText  = '⚠️ CẢNH BÁO';\n    combinedColor = '#f39c12';\n    if (cong1Status === 'yellow') {\n        telegramMsg = '⚠️ CẢNH BÁO: Mực nước trong cống đạt ' + fillPct + '%, tốc độ dâng ' + riseRate + ' cm/phút. Đề nghị theo dõi.';\n    }\n} else {\n    combinedText  = '✅ AN TOÀN';\n    combinedColor = '#2ecc71';\n}\n\n// Telegram rate limiting — only send on state change\nvar prevCombined = flow.get('prev_combined_level');\nvar shouldTelegram = (telegramMsg !== null) &&\n                     (combinedLevel !== prevCombined) &&\n                     (combinedLevel >= 1);\nflow.set('prev_combined_level', combinedLevel);\n\nvar outMsg = {\n    payload: {\n        combined_level : combinedLevel,\n        combined_text  : combinedText,\n        combined_color : combinedColor,\n        cong1_status   : cong1Status,\n        duong1_status  : duong1Status,\n        fill_pct       : fillPct,\n        rise_rate      : riseRate,\n        depth_cm       : depthCm,\n        timestamp      : Date.now()\n    }\n};\n\nvar telegramOut = shouldTelegram ? { payload: { chatId: global.get('telegram_chat_id') || 0, type: 'message', content: telegramMsg } } : null;\n\nreturn [outMsg, telegramOut];",
-    "outputs": 2,
-    "noerr": 0,
-    "x": 920,
-    "y": 200,
-    "wires": [
-      [
-        "ui_text_combined",
-        "debug_combined"
-      ],
-      [
-        "fn_telegram_format"
-      ]
-    ]
-  },
-  {
-    "id": "fn_telegram_format",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Format Telegram Message",
-    "func": "if (!msg || !msg.payload) return null;\n\n// msg.payload is already { chatId, type, content } from combined alert\nvar chatId = msg.payload.chatId;\nif (!chatId || chatId === 0) {\n    node.warn('Telegram chatId not set. Set global.telegram_chat_id.');\n    return null;\n}\n\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "x": 1180,
-    "y": 160,
-    "wires": [
-      [
-        "telegram_sender"
-      ]
-    ]
-  },
-  {
-    "id": "telegram_sender",
-    "type": "telegram sender",
-    "z": "tab_flood_main",
-    "name": "Send Telegram Alert",
-    "bot": "telegram_bot_config",
-    "x": 1420,
-    "y": 160,
-    "wires": [
-      [
-        "debug_telegram"
-      ]
-    ]
-  },
-  {
-    "id": "fn_thingspeak_cong1",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Format ThingSpeak (cong1)",
-    "func": "var p     = msg.payload;\nvar apiKey= global.get('thingspeak_write_key') || 'YOUR_API_KEY';\nvar state = p.alert_state || 0;\n\nmsg.url    = 'https://api.thingspeak.com/update';\nmsg.method = 'POST';\nmsg.headers= { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload= 'api_key=' + apiKey +\n             '&field1=' + (p.level_cm  || 0) +\n             '&field2=' + (p.fill_pct  || 0) +\n             '&field3=' + (p.rise_rate || 0) +\n             '&field5=' + state;\n\n// Mark as cong1 source so the merge node knows\nmsg._source = 'cong1';\n\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "x": 920,
-    "y": 80,
-    "wires": [
-      [
-        "fn_thingspeak_merge"
-      ]
-    ]
-  },
-  {
-    "id": "fn_thingspeak_duong1",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Format ThingSpeak (duong1)",
-    "func": "var p     = msg.payload;\nvar apiKey= global.get('thingspeak_write_key') || 'YOUR_API_KEY';\nvar state = p.alert_state || 0;\n\nmsg.url    = 'https://api.thingspeak.com/update';\nmsg.method = 'POST';\nmsg.headers= { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload= 'api_key=' + apiKey +\n             '&field4=' + (p.depth_cm || 0) +\n             '&field6=' + state;\n\nmsg._source = 'duong1';\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "x": 920,
-    "y": 320,
-    "wires": [
-      [
-        "fn_thingspeak_merge"
-      ]
-    ]
-  },
-  {
-    "id": "fn_thingspeak_merge",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "ThingSpeak Rate Limit (15s)",
-    "func": "// ThingSpeak free tier: max 1 update per 15 seconds\nvar lastSend = context.get('lastSend') || 0;\nvar now = Date.now();\nif (now - lastSend < 15000) {\n    // Store pending but skip sending\n    context.set('pending', msg);\n    return null;\n}\ncontext.set('lastSend', now);\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "x": 1180,
-    "y": 200,
-    "wires": [
-      [
-        "http_thingspeak"
-      ]
-    ]
-  },
-  {
-    "id": "http_thingspeak",
-    "type": "http request",
-    "z": "tab_flood_main",
-    "name": "POST ThingSpeak",
-    "method": "use",
-    "ret": "txt",
-    "paytoqs": "ignore",
-    "url": "",
-    "tls": "tls_thingspeak",
-    "persist": false,
-    "proxy": "",
-    "authType": "",
-    "x": 1420,
-    "y": 200,
-    "wires": [
-      [
-        "debug_thingspeak"
-      ]
-    ]
-  },
-  {
-    "id": "fn_online_cong1",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Online Status cong1",
-    "func": "var status = msg.payload === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE';\nmsg.payload = status;\nflow.set('cong1_online', msg.payload);\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "x": 360,
-    "y": 140,
-    "wires": [
-      [
-        "ui_text_cong1_online"
-      ]
-    ]
-  },
-  {
-    "id": "fn_online_duong1",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Online Status duong1",
-    "func": "var status = msg.payload === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE';\nmsg.payload = status;\nflow.set('duong1_online', msg.payload);\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "x": 360,
-    "y": 380,
-    "wires": [
-      [
-        "ui_text_duong1_online"
-      ]
-    ]
-  },
-  {
-    "id": "ui_btn_silence_buzzer",
-    "type": "ui_button",
-    "z": "tab_flood_main",
-    "name": "Tắt Còi Báo Động",
-    "group": "ui_group_duong1",
-    "order": 6,
-    "width": "6",
-    "height": "1",
-    "passthru": false,
-    "label": "🔇 Tắt Còi",
-    "tooltip": "Gửi lệnh tắt buzzer đến node duong1",
-    "color": "white",
-    "bgcolor": "#c0392b",
-    "icon": "",
-    "payload": "off",
-    "payloadType": "str",
-    "topic": "flood/duong1/buzzer",
-    "topicType": "str",
-    "x": 360,
-    "y": 500,
-    "wires": [
-      [
-        "mqtt_out_buzzer"
-      ]
-    ]
-  },
-  {
-    "id": "mqtt_out_buzzer",
-    "type": "mqtt out",
-    "z": "tab_flood_main",
-    "name": "duong1/buzzer",
-    "topic": "flood/duong1/buzzer",
-    "qos": "1",
-    "retain": "false",
-    "broker": "mqtt_broker_config",
-    "x": 620,
-    "y": 500,
-    "wires": []
-  },
-  {
-    "id": "ui_gauge_fill",
-    "type": "ui_gauge",
-    "z": "tab_flood_main",
-    "name": "Gauge Fill %",
-    "group": "ui_group_cong1",
-    "order": 1,
-    "width": "6",
-    "height": "4",
-    "gtype": "gage",
-    "title": "Độ Đầy Cống (%)",
-    "label": "%",
-    "format": "{{value}}%",
-    "min": "0",
-    "max": "100",
-    "colors": [
-      "#2ecc71",
-      "#f39c12",
-      "#e74c3c"
-    ],
-    "seg1": "60",
-    "seg2": "80",
-    "x": 920,
-    "y": 40,
-    "wires": []
-  },
-  {
-    "id": "ui_gauge_depth",
-    "type": "ui_gauge",
-    "z": "tab_flood_main",
-    "name": "Gauge Depth cm",
-    "group": "ui_group_duong1",
-    "order": 1,
-    "width": "6",
-    "height": "4",
-    "gtype": "gage",
-    "title": "Độ Sâu Ngập (cm)",
-    "label": "cm",
-    "format": "{{value}} cm",
-    "min": "0",
-    "max": "50",
-    "colors": [
-      "#2ecc71",
-      "#f39c12",
-      "#e74c3c"
-    ],
-    "seg1": "5",
-    "seg2": "15",
-    "x": 920,
-    "y": 360,
-    "wires": []
-  },
-  {
-    "id": "ui_text_cong1_status",
-    "type": "ui_text",
-    "z": "tab_flood_main",
-    "group": "ui_group_cong1",
-    "order": 2,
-    "width": "3",
-    "height": "1",
-    "name": "Trạng Thái Cống",
-    "label": "Trạng thái:",
-    "format": "{{msg.payload}}",
-    "layout": "row-spread",
-    "x": 920,
-    "y": 100,
-    "wires": []
-  },
-  {
-    "id": "ui_text_rise_rate",
-    "type": "ui_text",
-    "z": "tab_flood_main",
-    "group": "ui_group_cong1",
-    "order": 3,
-    "width": "3",
-    "height": "1",
-    "name": "Tốc Độ Dâng",
-    "label": "Tốc độ dâng:",
-    "format": "{{msg.payload}}",
-    "layout": "row-spread",
-    "x": 920,
-    "y": 140,
-    "wires": []
-  },
-  {
-    "id": "ui_text_cong1_online",
-    "type": "ui_text",
-    "z": "tab_flood_main",
-    "group": "ui_group_cong1",
-    "order": 4,
-    "width": "3",
-    "height": "1",
-    "name": "Online cong1",
-    "label": "Kết nối:",
-    "format": "{{msg.payload}}",
-    "layout": "row-spread",
-    "x": 620,
-    "y": 140,
-    "wires": []
-  },
-  {
-    "id": "ui_text_duong1_status",
-    "type": "ui_text",
-    "z": "tab_flood_main",
-    "group": "ui_group_duong1",
-    "order": 2,
-    "width": "3",
-    "height": "1",
-    "name": "Trạng Thái Đường",
-    "label": "Trạng thái:",
-    "format": "{{msg.payload}}",
-    "layout": "row-spread",
-    "x": 920,
-    "y": 400,
-    "wires": []
-  },
-  {
-    "id": "ui_text_duong1_online",
-    "type": "ui_text",
-    "z": "tab_flood_main",
-    "group": "ui_group_duong1",
-    "order": 3,
-    "width": "3",
-    "height": "1",
-    "name": "Online duong1",
-    "label": "Kết nối:",
-    "format": "{{msg.payload}}",
-    "layout": "row-spread",
-    "x": 620,
-    "y": 380,
-    "wires": []
-  },
-  {
-    "id": "ui_text_combined",
-    "type": "ui_text",
-    "z": "tab_flood_main",
-    "group": "ui_group_alert",
-    "order": 1,
-    "width": "12",
-    "height": "2",
-    "name": "Cảnh Báo Tổng Hợp",
-    "label": "",
-    "format": "<span style='font-size:1.4em; font-weight:bold; color:{{msg.payload.combined_color}}'>{{msg.payload.combined_text}}</span><br/><small>Cống: {{msg.payload.fill_pct}}% | Dâng: {{msg.payload.rise_rate}} cm/ph | Đường: {{msg.payload.depth_cm}} cm</small>",
-    "layout": "row-center",
-    "x": 1180,
-    "y": 240,
-    "wires": []
-  },
-  {
-    "id": "ui_chart_cong1",
-    "type": "ui_chart",
-    "z": "tab_flood_main",
-    "name": "Chart cong1",
-    "group": "ui_group_chart",
-    "order": 1,
-    "width": "6",
-    "height": "4",
-    "label": "Mực Nước Cống (cm & %)",
-    "chartType": "line",
-    "legend": "true",
-    "xformat": "HH:mm:ss",
-    "interpolate": "linear",
-    "nodata": "Chờ dữ liệu…",
-    "dot": false,
-    "ymin": "0",
-    "ymax": "180",
-    "removeOlder": "1",
-    "removeOlderUnit": "3600",
-    "removeOlderPoints": "100",
-    "colors": [
-      "#1abc9c",
-      "#3498db",
-      "#e74c3c",
-      "#9b59b6",
-      "#f39c12",
-      "#1abc9c",
-      "#1abc9c"
-    ],
-    "useOneColor": false,
-    "useUTC": false,
-    "inputs": 1,
-    "x": 920,
-    "y": 180,
-    "wires": []
-  },
-  {
-    "id": "ui_chart_duong1",
-    "type": "ui_chart",
-    "z": "tab_flood_main",
-    "name": "Chart duong1",
-    "group": "ui_group_chart",
-    "order": 2,
-    "width": "6",
-    "height": "4",
-    "label": "Độ Sâu Ngập Đường (cm)",
-    "chartType": "line",
-    "legend": "true",
-    "xformat": "HH:mm:ss",
-    "interpolate": "linear",
-    "nodata": "Chờ dữ liệu…",
-    "dot": false,
-    "ymin": "0",
-    "ymax": "50",
-    "removeOlder": "1",
-    "removeOlderUnit": "3600",
-    "removeOlderPoints": "100",
-    "colors": [
-      "#2980b9",
-      "#e74c3c",
-      "#f39c12"
-    ],
-    "useOneColor": false,
-    "useUTC": false,
-    "inputs": 1,
-    "x": 920,
-    "y": 420,
-    "wires": []
-  },
-  {
-    "id": "debug_cong1",
-    "type": "debug",
-    "z": "tab_flood_main",
-    "name": "Debug cong1",
-    "active": true,
-    "tosidebar": true,
-    "console": false,
-    "tostatus": true,
-    "complete": "payload",
-    "targetType": "msg",
-    "statusVal": "payload.fill_pct",
-    "statusType": "auto",
-    "x": 620,
-    "y": 40,
-    "wires": []
-  },
-  {
-    "id": "debug_duong1",
-    "type": "debug",
-    "z": "tab_flood_main",
-    "name": "Debug duong1",
-    "active": true,
-    "tosidebar": true,
-    "console": false,
-    "tostatus": true,
-    "complete": "payload",
-    "targetType": "msg",
-    "statusVal": "payload.depth_cm",
-    "statusType": "auto",
-    "x": 620,
-    "y": 280,
-    "wires": []
-  },
-  {
-    "id": "debug_combined",
-    "type": "debug",
-    "z": "tab_flood_main",
-    "name": "Debug Combined",
-    "active": true,
-    "tosidebar": true,
-    "console": false,
-    "tostatus": true,
-    "complete": "payload",
-    "targetType": "msg",
-    "x": 1180,
-    "y": 240,
-    "wires": []
-  },
-  {
-    "id": "debug_telegram",
-    "type": "debug",
-    "z": "tab_flood_main",
-    "name": "Debug Telegram",
-    "active": true,
-    "tosidebar": true,
-    "console": false,
-    "complete": "payload",
-    "targetType": "msg",
-    "x": 1420,
-    "y": 120,
-    "wires": []
-  },
-  {
-    "id": "debug_thingspeak",
-    "type": "debug",
-    "z": "tab_flood_main",
-    "name": "Debug ThingSpeak",
-    "active": true,
-    "tosidebar": true,
-    "console": false,
-    "complete": "payload",
-    "targetType": "msg",
-    "x": 1420,
-    "y": 240,
-    "wires": []
-  },
-  {
-    "id": "inject_init_globals",
-    "type": "inject",
-    "z": "tab_flood_main",
-    "name": "Init Global Variables",
-    "props": [
-      {
-        "p": "payload"
-      }
-    ],
-    "repeat": "",
-    "crontab": "",
-    "once": true,
-    "onceDelay": "1",
-    "topic": "",
-    "payload": "init",
-    "payloadType": "str",
-    "x": 120,
-    "y": 560,
-    "wires": [
-      [
-        "fn_init_globals"
-      ]
-    ]
-  },
-  {
-    "id": "fn_init_globals",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Set Global Credentials",
-    "func": "// ─── Set credentials or get from environment ──────────────\nglobal.set('telegram_chat_id',    env.get('TELEGRAM_CHAT_ID')    || 0);\nglobal.set('thingspeak_write_key', env.get('THINGSPEAK_WRITE_API_KEY') || 'YOUR_KEY');\n\nnode.status({ fill:'green', shape:'dot', text:'Globals initialised' });\nreturn null;",
-    "outputs": 1,
-    "noerr": 0,
-    "x": 360,
-    "y": 560,
-    "wires": []
-  },
-  {
-    "id": "mqtt_broker_config",
-    "type": "mqtt-broker",
-    "name": "Flood MQTT Broker",
-    "broker": "localhost",
-    "port": "1883",
-    "clientid": "nodered_flood_monitor",
-    "autoConnect": true,
-    "usetls": false,
-    "protocolVersion": "4",
-    "keepalive": "60",
-    "cleansession": true,
-    "birthTopic": "",
-    "birthQos": "0",
-    "birthPayload": "",
-    "birthMsg": {},
-    "closeTopic": "",
-    "closeQos": "0",
-    "closePayload": "",
-    "closeMsg": {},
-    "willTopic": "",
-    "willQos": "0",
-    "willPayload": "",
-    "willMsg": {},
-    "sessionExpiry": ""
-  },
-  {
-    "id": "telegram_bot_config",
-    "type": "telegram bot",
-    "usernames": [],
-    "chatids": [],
-    "name": "FloodAlertBot",
-    "token": "",
-    "updatemode": "polling",
-    "pollinterval": "300",
-    "usesocks": false,
-    "sockshost": "",
-    "socksprotocol": "socks5",
-    "socksport": "6667",
-    "socksusername": "",
-    "sockspassword": "",
-    "botname": "FloodAlertBot",
-    "userInfo": false,
-    "parsemode": "Markdown",
-    "protected": false
-  },
-  {
-    "id": "tls_thingspeak",
-    "type": "tls-config",
-    "name": "ThingSpeak TLS",
-    "cert": "",
-    "key": "",
-    "ca": "",
-    "certname": "",
-    "keyname": "",
-    "caname": "",
-    "servername": "",
-    "verifyservercert": false
-  },
-  {
-    "id": "ui_group_ai",
-    "type": "ui_group",
-    "name": "🤖 Dự Báo AI Đa Tầng Thời Gian (5m - 15m - 30m - 60m)",
-    "tab": "ui_tab_flood",
-    "order": 3,
-    "disp": true,
-    "width": "12",
-    "collapse": false
-  },
-  {
-    "id": "mqtt_in_ai_pred",
-    "type": "mqtt in",
-    "z": "tab_flood_main",
-    "name": "ai/prediction",
-    "topic": "flood/ai/prediction",
-    "qos": "1",
-    "datatype": "json",
-    "broker": "mqtt_broker_config",
-    "x": 120,
-    "y": 480,
-    "wires": [
-      [
-        "fn_process_ai"
-      ]
-    ]
-  },
-  {
-    "id": "fn_process_ai",
-    "type": "function",
-    "z": "tab_flood_main",
-    "name": "Process Multi-Horizon AI",
-    "func": "var p = msg.payload;\nif (!p) return null;\n\n// Output 1: Gauge dự báo mực nước 5m (pure number)\nvar msgGauge5m = {\n    payload: p.predicted_level_5m,\n    topic: 'Dự báo +5m'\n};\n\n// Output 2: Gauge xác suất ngập 30m (%) (pure number)\nvar msgGauge30m = {\n    payload: p.prob_flood_30m,\n    topic: 'Xác suất ngập +30m (%)'\n};\n\n// Output 3: Trạng thái đa tầng (Object for UI Template)\nvar msgStatus = {\n    payload: {\n        status_color: p.status_color || '#2ecc71',\n        predicted_status: p.predicted_status || 'AN TOÀN',\n        predicted_fill_5m: p.predicted_fill_5m || 0,\n        status_30m_color: p.status_30m_color || '#2ecc71',\n        status_30m: p.status_30m || 'AN TOÀN THOÁT NƯỚC',\n        prob_flood_30m: p.prob_flood_30m || 0,\n        current_level: p.current_level || 0,\n        predicted_level_15m: p.predicted_level_15m || 0,\n        predicted_level_30m: p.predicted_level_30m || 0,\n        predicted_level_60m: p.predicted_level_60m || 0\n    }\n};\n\n// Output 4: Khuyến nghị điều phối giao thông (Object for UI Template)\nvar warnColor = p.early_warning ? '#e74c3c' : (p.prob_flood_30m >= 50 ? '#f39c12' : '#2ecc71');\nvar msgTraffic = {\n    payload: {\n        traffic_color: warnColor,\n        traffic_advisory: p.traffic_advisory || 'Lưu lượng thoát ổn định.'\n    }\n};\n\n// Output 5: Biểu đồ đa đường (Actual, +5m, +30m, +60m)\nvar msgChartActual = { topic: '1. Mực nước thực tế (cm)', payload: p.current_level };\nvar msgChart5m     = { topic: '2. Dự báo AI +5m (cm)',   payload: p.predicted_level_5m };\nvar msgChart30m    = { topic: '3. Dự báo AI +30m (cm)',  payload: p.predicted_level_30m };\nvar msgChart60m    = { topic: '4. Dự báo AI +60m (cm)',  payload: p.predicted_level_60m };\n\n// Output 6: Telegram early warning alert\nvar msgTg = null;\nif (p.early_warning) {\n    var lastAlert = flow.get('last_ai_alert_time') || 0;\n    var now = Date.now();\n    if (now - lastAlert > 180000) {\n        flow.set('last_ai_alert_time', now);\n        var tgChatId = global.get('telegram_chat_id');\n        msgTg = {\n            payload: {\n                chatId: tgChatId,\n                type: 'message',\n                content: '🚨 *CẢNH BÁO SỚM ĐIỀU PHỐI GIAO THÔNG (AI MULTI-HORIZON)*\\n\\n' +\n                         '📍 *Vị trí:* Cống 1 & Điểm trũng mặt đường\\n' +\n                         '🌊 *Mực nước hiện tại:* ' + p.current_level + ' cm (' + p.current_fill + '%)\\n' +\n                         '🔮 *Dự báo +5 phút:* ' + p.predicted_level_5m + ' cm\\n' +\n                         '🔮 *Dự báo +30 phút:* ' + p.predicted_level_30m + ' cm (*Xác suất ngập: ' + p.prob_flood_30m + '%*)\\n' +\n                         '🔮 *Dự báo +60 phút:* ' + p.predicted_level_60m + ' cm\\n\\n' +\n                         '📢 *Khuyến nghị:* ' + p.traffic_advisory + '\\n\\n' +\n                         '_(Tích hợp Radar Nowcasting & Cảm biến IoT UET)_'\n            }\n        };\n    }\n}\n\nreturn [msgGauge5m, msgGauge30m, msgStatus, msgTraffic, [msgChartActual, msgChart5m, msgChart30m, msgChart60m], msgTg];\n",
-    "outputs": 6,
-    "noerr": 0,
-    "x": 360,
-    "y": 480,
-    "wires": [
-      [
-        "ui_gauge_ai_5m"
-      ],
-      [
-        "ui_gauge_ai_30m"
-      ],
-      [
-        "ui_text_ai_status"
-      ],
-      [
-        "ui_text_traffic_advisory"
-      ],
-      [
-        "ui_chart_ai_compare"
-      ],
-      [
-        "telegram_sender"
-      ]
-    ]
-  },
-  {
-    "id": "ui_gauge_ai_5m",
-    "type": "ui_gauge",
-    "z": "tab_flood_main",
-    "name": "Dự báo sau 5 phút",
-    "group": "ui_group_ai",
-    "order": 1,
-    "width": "3",
-    "height": "4",
-    "gtype": "gage",
-    "title": "Dự Báo +5 Phút (Tại Chỗ)",
-    "label": "cm",
-    "format": "{{value}}",
-    "min": 0,
-    "max": 180,
-    "colors": [
-      "#2ecc71",
-      "#f39c12",
-      "#e74c3c"
-    ],
-    "seg1": "90",
-    "seg2": "144",
-    "x": 640,
-    "y": 420,
-    "wires": []
-  },
-  {
-    "id": "ui_gauge_ai_30m",
-    "type": "ui_gauge",
-    "z": "tab_flood_main",
-    "name": "Nguy cơ ngập sau 30 phút",
-    "group": "ui_group_ai",
-    "order": 2,
-    "width": "3",
-    "height": "4",
-    "gtype": "gage",
-    "title": "Nguy Cơ Ngập +30m (Giao Thông)",
-    "label": "%",
-    "format": "{{value}}%",
-    "min": 0,
-    "max": 100,
-    "colors": [
-      "#2ecc71",
-      "#f39c12",
-      "#e74c3c"
-    ],
-    "seg1": "50",
-    "seg2": "75",
-    "x": 640,
-    "y": 460,
-    "wires": []
-  },
-  {
-    "id": "ui_text_ai_status",
-    "type": "ui_template",
-    "z": "tab_flood_main",
-    "group": "ui_group_ai",
-    "order": 3,
-    "width": "6",
-    "height": "4",
-    "name": "Trạng Thái Đa Tầng AI",
-    "label": "Trạng Thái Đa Tầng Thời Gian:",
-    "format": "<div style=\"display:flex; flex-direction:column; justify-content:center; height:100%; font-size:13px; line-height:1.7; padding:4px;\"><div style=\"margin-bottom:6px;\"><b>Mốc +5m:</b> <span style=\"display:inline-block; padding:2px 10px; border-radius:12px; color:#fff; font-weight:bold; background:{{msg.payload.status_color}};\">{{msg.payload.predicted_status}} ({{msg.payload.predicted_fill_5m}}%)</span></div><div style=\"margin-bottom:6px;\"><b>Mốc +30m:</b> <span style=\"display:inline-block; padding:2px 10px; border-radius:12px; color:#fff; font-weight:bold; background:{{msg.payload.status_30m_color}};\">{{msg.payload.status_30m}} ({{msg.payload.prob_flood_30m}}%)</span></div><div style=\"color:#555;\"><b>Mực nước:</b> Hiện tại: <b>{{msg.payload.current_level}}cm</b> | +15m: <b>{{msg.payload.predicted_level_15m}}cm</b> | +30m: <b>{{msg.payload.predicted_level_30m}}cm</b> | +60m: <b>{{msg.payload.predicted_level_60m}}cm</b></div></div>",
-    "layout": "row-spread",
-    "x": 640,
-    "y": 500,
-    "wires": [],
-    "templateScope": "local"
-  },
-  {
-    "id": "ui_text_traffic_advisory",
-    "type": "ui_template",
-    "z": "tab_flood_main",
-    "group": "ui_group_ai",
-    "order": 4,
-    "width": "12",
-    "height": "2",
-    "name": "Khuyến Nghị Điều Phối Giao Thông",
-    "label": "Điều Phối Giao Thông & Vận Hành Hạ Tầng:",
-    "format": "<div style=\"display:flex; align-items:center; height:100%; padding:8px 14px; border-left:5px solid {{msg.payload.traffic_color}}; background:#f8f9fa; font-weight:600; color:{{msg.payload.traffic_color}}; font-size:14px; border-radius:4px;\">🚦 {{msg.payload.traffic_advisory}}</div>",
-    "layout": "row-spread",
-    "x": 640,
-    "y": 540,
-    "wires": [],
-    "templateScope": "local"
-  },
-  {
-    "id": "ui_chart_ai_compare",
-    "type": "ui_chart",
-    "z": "tab_flood_main",
-    "group": "ui_group_ai",
-    "order": 5,
-    "width": "12",
-    "height": "5",
-    "name": "Biểu Đồ Xu Hướng Đa Tầng AI",
-    "label": "So Sánh Mực Nước Thực Tế vs Dự Báo Đa Mốc (+5m, +30m, +60m)",
-    "chartType": "line",
-    "legend": "true",
-    "xformat": "HH:mm:ss",
-    "interpolate": "linear",
-    "nodata": "Đang chờ dữ liệu AI Multi-Horizon...",
-    "dot": false,
-    "ymin": "0",
-    "ymax": "180",
-    "removeOlder": "30",
-    "removeOlderPoints": "",
-    "removeOlderUnit": "60",
-    "cutout": 0,
-    "useOneColor": false,
-    "useUTC": false,
-    "colors": [
-      "#2c3e50",
-      "#2ecc71",
-      "#e67e22",
-      "#e74c3c",
-      "#9b59b6",
-      "#34495e"
-    ],
-    "x": 660,
-    "y": 580,
-    "wires": [
-      []
-    ]
-  }
+    {
+        "id": "tab_flood_main",
+        "type": "tab",
+        "label": "Flood Monitor Main",
+        "disabled": false,
+        "info": "Urban Flood Monitoring & Alert System — main flow"
+    },
+    {
+        "id": "tab_dashboard",
+        "type": "tab",
+        "label": "Dashboard Config",
+        "disabled": false,
+        "info": "Dashboard UI configuration nodes"
+    },
+    {
+        "id": "ui_tab_flood",
+        "type": "ui_tab",
+        "name": "Flood Monitor",
+        "icon": "dashboard",
+        "order": 1,
+        "disp": true
+    },
+    {
+        "id": "mqtt_broker_config",
+        "type": "mqtt-broker",
+        "name": "Flood MQTT Broker",
+        "broker": "localhost",
+        "port": "1883",
+        "clientid": "nodered_flood_monitor",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "sessionExpiry": ""
+    },
+    {
+        "id": "telegram_bot_config",
+        "type": "telegram bot",
+        "usernames": [],
+        "chatids": [],
+        "name": "FloodAlertBot",
+        "token": "",
+        "updatemode": "polling",
+        "pollinterval": "300",
+        "usesocks": false,
+        "sockshost": "",
+        "socksprotocol": "socks5",
+        "socksport": "6667",
+        "socksusername": "",
+        "sockspassword": "",
+        "botname": "FloodAlertBot",
+        "userInfo": false,
+        "parsemode": "Markdown",
+        "protected": false
+    },
+    {
+        "id": "tls_thingspeak",
+        "type": "tls-config",
+        "name": "ThingSpeak TLS",
+        "cert": "",
+        "key": "",
+        "ca": "",
+        "certname": "",
+        "keyname": "",
+        "caname": "",
+        "servername": "",
+        "verifyservercert": false
+    },
+    {
+        "id": "ui_group_ai",
+        "type": "ui_group",
+        "name": "🤖 Dự Báo AI Đa Tầng Thời Gian (5m - 15m - 30m - 60m)",
+        "tab": "ui_tab_flood",
+        "order": 4,
+        "disp": true,
+        "width": "12",
+        "collapse": false
+    },
+    {
+        "id": "mqtt_in_ai_pred",
+        "type": "mqtt in",
+        "z": "tab_flood_main",
+        "name": "ai/prediction",
+        "topic": "flood/ai/prediction",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "x": 120,
+        "y": 3780,
+        "wires": [
+            [
+                "fn_process_ai"
+            ]
+        ]
+    },
+    {
+        "id": "fn_process_ai",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Process Multi-Horizon AI",
+        "func": "var p = msg.payload;\nif (!p) return null;\n\n// Output 1: Gauge dự báo mực nước 5m (pure number)\nvar msgGauge5m = {\n    payload: p.predicted_level_5m,\n    topic: 'Dự báo +5m'\n};\n\n// Output 2: Gauge xác suất ngập 30m (%) (pure number)\nvar msgGauge30m = {\n    payload: p.prob_flood_30m,\n    topic: 'Xác suất ngập +30m (%)'\n};\n\n// Output 3: Trạng thái đa tầng (Object for UI Template)\nvar msgStatus = {\n    payload: {\n        status_color: p.status_color || '#2ecc71',\n        predicted_status: p.predicted_status || 'AN TOÀN',\n        predicted_fill_5m: p.predicted_fill_5m || 0,\n        status_30m_color: p.status_30m_color || '#2ecc71',\n        status_30m: p.status_30m || 'AN TOÀN THOÁT NƯỚC',\n        prob_flood_30m: p.prob_flood_30m || 0,\n        current_level: p.current_level || 0,\n        predicted_level_15m: p.predicted_level_15m || 0,\n        predicted_level_30m: p.predicted_level_30m || 0,\n        predicted_level_60m: p.predicted_level_60m || 0\n    }\n};\n\n// Output 4: Khuyến nghị điều phối giao thông (Object for UI Template)\nvar warnColor = p.early_warning ? '#e74c3c' : (p.prob_flood_30m >= 50 ? '#f39c12' : '#2ecc71');\nvar msgTraffic = {\n    payload: {\n        traffic_color: warnColor,\n        traffic_advisory: p.traffic_advisory || 'Lưu lượng thoát ổn định.'\n    }\n};\n\n// Output 5: Biểu đồ đa đường (Actual, +5m, +30m, +60m)\nvar msgChartActual = { topic: '1. Mực nước thực tế (cm)', payload: p.current_level };\nvar msgChart5m     = { topic: '2. Dự báo AI +5m (cm)',   payload: p.predicted_level_5m };\nvar msgChart30m    = { topic: '3. Dự báo AI +30m (cm)',  payload: p.predicted_level_30m };\nvar msgChart60m    = { topic: '4. Dự báo AI +60m (cm)',  payload: p.predicted_level_60m };\n\n// Output 6: Telegram early warning alert\nvar msgTg = null;\nif (p.early_warning) {\n    var lastAlert = flow.get('last_ai_alert_time') || 0;\n    var now = Date.now();\n    if (now - lastAlert > 180000) {\n        flow.set('last_ai_alert_time', now);\n        var tgChatId = global.get('telegram_chat_id');\n        msgTg = {\n            payload: {\n                chatId: tgChatId,\n                type: 'message',\n                content: '🚨 *CẢNH BÁO SỚM ĐIỀU PHỐI GIAO THÔNG (AI MULTI-HORIZON)*\\n\\n' +\n                         '📍 *Vị trí:* Cống 1 & Điểm trũng mặt đường\\n' +\n                         '🌊 *Mực nước hiện tại:* ' + p.current_level + ' cm (' + p.current_fill + '%)\\n' +\n                         '🔮 *Dự báo +5 phút:* ' + p.predicted_level_5m + ' cm\\n' +\n                         '🔮 *Dự báo +30 phút:* ' + p.predicted_level_30m + ' cm (*Xác suất ngập: ' + p.prob_flood_30m + '%*)\\n' +\n                         '🔮 *Dự báo +60 phút:* ' + p.predicted_level_60m + ' cm\\n\\n' +\n                         '📢 *Khuyến nghị:* ' + p.traffic_advisory + '\\n\\n' +\n                         '_(Tích hợp Radar Nowcasting & Cảm biến IoT UET)_'\n            }\n        };\n    }\n}\n\nreturn [msgGauge5m, msgGauge30m, msgStatus, msgTraffic, [msgChartActual, msgChart5m, msgChart30m, msgChart60m], msgTg];\n",
+        "outputs": 6,
+        "noerr": 0,
+        "x": 360,
+        "y": 3780,
+        "wires": [
+            [
+                "ui_gauge_ai_5m"
+            ],
+            [
+                "ui_gauge_ai_30m"
+            ],
+            [
+                "ui_text_ai_status"
+            ],
+            [
+                "ui_text_traffic_advisory"
+            ],
+            [
+                "ui_chart_ai_compare"
+            ],
+            [
+                "fn_tg_out"
+            ]
+        ]
+    },
+    {
+        "id": "ui_gauge_ai_5m",
+        "type": "ui_gauge",
+        "z": "tab_flood_main",
+        "name": "Dự báo sau 5 phút",
+        "group": "ui_group_ai",
+        "order": 1,
+        "width": "3",
+        "height": "4",
+        "gtype": "gage",
+        "title": "Dự Báo +5 Phút (Tại Chỗ)",
+        "label": "cm",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 180,
+        "colors": [
+            "#2ecc71",
+            "#f39c12",
+            "#e74c3c"
+        ],
+        "seg1": "90",
+        "seg2": "144",
+        "x": 640,
+        "y": 3720,
+        "wires": []
+    },
+    {
+        "id": "ui_gauge_ai_30m",
+        "type": "ui_gauge",
+        "z": "tab_flood_main",
+        "name": "Nguy cơ ngập sau 30 phút",
+        "group": "ui_group_ai",
+        "order": 2,
+        "width": "3",
+        "height": "4",
+        "gtype": "gage",
+        "title": "Nguy Cơ Ngập +30m (Giao Thông)",
+        "label": "%",
+        "format": "{{value}}%",
+        "min": 0,
+        "max": 100,
+        "colors": [
+            "#2ecc71",
+            "#f39c12",
+            "#e74c3c"
+        ],
+        "seg1": "50",
+        "seg2": "75",
+        "x": 640,
+        "y": 3760,
+        "wires": []
+    },
+    {
+        "id": "ui_text_ai_status",
+        "type": "ui_template",
+        "z": "tab_flood_main",
+        "group": "ui_group_ai",
+        "order": 3,
+        "width": "6",
+        "height": "4",
+        "name": "Trạng Thái Đa Tầng AI",
+        "label": "Trạng Thái Đa Tầng Thời Gian:",
+        "format": "<div style=\"display:flex; flex-direction:column; justify-content:center; height:100%; font-size:13px; line-height:1.7; padding:4px;\"><div style=\"margin-bottom:6px;\"><b>Mốc +5m:</b> <span style=\"display:inline-block; padding:2px 10px; border-radius:12px; color:#fff; font-weight:bold; background:{{msg.payload.status_color}};\">{{msg.payload.predicted_status}} ({{msg.payload.predicted_fill_5m}}%)</span></div><div style=\"margin-bottom:6px;\"><b>Mốc +30m:</b> <span style=\"display:inline-block; padding:2px 10px; border-radius:12px; color:#fff; font-weight:bold; background:{{msg.payload.status_30m_color}};\">{{msg.payload.status_30m}} ({{msg.payload.prob_flood_30m}}%)</span></div><div style=\"color:#555;\"><b>Mực nước:</b> Hiện tại: <b>{{msg.payload.current_level}}cm</b> | +15m: <b>{{msg.payload.predicted_level_15m}}cm</b> | +30m: <b>{{msg.payload.predicted_level_30m}}cm</b> | +60m: <b>{{msg.payload.predicted_level_60m}}cm</b></div></div>",
+        "layout": "row-spread",
+        "x": 640,
+        "y": 3800,
+        "wires": [],
+        "templateScope": "local"
+    },
+    {
+        "id": "ui_text_traffic_advisory",
+        "type": "ui_template",
+        "z": "tab_flood_main",
+        "group": "ui_group_ai",
+        "order": 4,
+        "width": "12",
+        "height": "2",
+        "name": "Khuyến Nghị Điều Phối Giao Thông",
+        "label": "Điều Phối Giao Thông & Vận Hành Hạ Tầng:",
+        "format": "<div style=\"display:flex; align-items:center; height:100%; padding:8px 14px; border-left:5px solid {{msg.payload.traffic_color}}; background:#f8f9fa; font-weight:600; color:{{msg.payload.traffic_color}}; font-size:14px; border-radius:4px;\">🚦 {{msg.payload.traffic_advisory}}</div>",
+        "layout": "row-spread",
+        "x": 640,
+        "y": 3840,
+        "wires": [],
+        "templateScope": "local"
+    },
+    {
+        "id": "ui_chart_ai_compare",
+        "type": "ui_chart",
+        "z": "tab_flood_main",
+        "group": "ui_group_ai",
+        "order": 5,
+        "width": "12",
+        "height": "5",
+        "name": "Biểu Đồ Xu Hướng Đa Tầng AI",
+        "label": "So Sánh Mực Nước Thực Tế vs Dự Báo Đa Mốc (+5m, +30m, +60m)",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Đang chờ dữ liệu AI Multi-Horizon...",
+        "dot": false,
+        "ymin": "0",
+        "ymax": "180",
+        "removeOlder": "30",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": 0,
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#2c3e50",
+            "#2ecc71",
+            "#e67e22",
+            "#e74c3c",
+            "#9b59b6",
+            "#34495e"
+        ],
+        "x": 660,
+        "y": 3880,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ui_tab_devices",
+        "type": "ui_tab",
+        "name": "Quản lý thiết bị",
+        "icon": "settings_remote",
+        "order": 2,
+        "disp": true,
+        "hidden": false
+    },
+    {
+        "id": "ui_group_cong1",
+        "type": "ui_group",
+        "name": "Cống 1 — Mực nước",
+        "tab": "ui_tab_flood",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "ui_group_duong1",
+        "type": "ui_group",
+        "name": "Đường 1 — Ngập mặt đường",
+        "tab": "ui_tab_flood",
+        "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "ui_group_alert",
+        "type": "ui_group",
+        "name": "Cảnh báo & yêu cầu vận hành",
+        "tab": "ui_tab_flood",
+        "order": 3,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "ui_group_chart",
+        "type": "ui_group",
+        "name": "Lịch sử dữ liệu",
+        "tab": "ui_tab_flood",
+        "order": 5,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "ui_group_devices",
+        "type": "ui_group",
+        "name": "Danh sách thiết bị (heartbeat)",
+        "tab": "ui_tab_devices",
+        "order": 1,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "ui_group_config",
+        "type": "ui_group",
+        "name": "Cấu hình & hiệu chuẩn từ xa",
+        "tab": "ui_tab_devices",
+        "order": 2,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "mqtt_in_level",
+        "type": "mqtt in",
+        "z": "tab_flood_main",
+        "name": "flood/+/level",
+        "topic": "flood/+/level",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 80,
+        "wires": [
+            [
+                "fn_route_level"
+            ]
+        ]
+    },
+    {
+        "id": "fn_route_level",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Định tuyến theo loại node",
+        "func": "// flood/<id>/level → nhận diện loại node theo nội dung: có \"L\" & \"m\" = node cống, có \"h\" = node đường.\n// Nhờ vậy thêm node mới (cong2, duong2...) không phải sửa flow.\nconst id = String(msg.topic).split('/')[1];\nconst p = msg.payload;\nif (!id || typeof p !== 'object' || p === null) {\n    node.warn('Payload không hợp lệ: ' + msg.topic);\n    return null;\n}\nmsg.node = id;\nif (p.L !== undefined && p.m !== undefined) return [msg, null];\nif (p.h !== undefined) return [null, msg];\nnode.warn('Không nhận ra loại node: ' + msg.topic);\nreturn null;\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 80,
+        "wires": [
+            [
+                "fn_drain"
+            ],
+            [
+                "fn_road"
+            ]
+        ]
+    },
+    {
+        "id": "fn_drain",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Node cống: TB trượt, tốc độ dâng, phân mức",
+        "func": "// Edge IT cho node cống:\n//  - trung bình trượt 5 mẫu gần nhất\n//  - tốc độ dâng v = (m_tb - m_tb cách đây 1 phút) / Δt   (cm/phút)\n//  - phân mức có hysteresis: lên mức ngay, hạ mức dùng ngưỡng thấp hơn + giữ tối thiểu 30 s\nconst T = {\n    Y_L: 50, Y_V: 2,              // VÀNG nếu L > 50% hoặc v ≥ 2 cm/phút\n    R_L: 80, R_L2: 60, R_V: 5,    // ĐỎ   nếu L > 80% hoặc (L > 60% và v ≥ 5 cm/phút)\n    Y_L_DN: 45, Y_V_DN: 1.5,      // ngưỡng hạ mức (vùng chết)\n    R_L_DN: 75, R_L2_DN: 55, R_V_DN: 4,\n    HOLD_MS: 30000,\n    WINDOW_MS: 60000,\n    AVG_N: 5\n};\nconst LV = ['green', 'yellow', 'red'];\nconst VN = ['🟢 XANH – theo dõi', '🟡 VÀNG – theo dõi sát', '🔴 ĐỎ – yêu cầu bật bơm/mở van'];\n\nconst id = msg.node, p = msg.payload;\nconst m = Number(p.m), L = Number(p.L);\nif (!isFinite(m) || !isFinite(L)) { node.warn(id + ': thiếu m/L'); return null; }\n\nconst now = Date.now();\nconst all = flow.get('drain_state') || {};\nconst st = all[id] || { mBuf: [], lBuf: [], hist: [], level: 0, since: now };\n\nst.mBuf.push(m); st.lBuf.push(L);\nif (st.mBuf.length > T.AVG_N) { st.mBuf.shift(); st.lBuf.shift(); }\nconst avg = a => a.reduce((s, x) => s + x, 0) / a.length;\nconst mAvg = avg(st.mBuf), lAvg = avg(st.lBuf);\n\nst.hist.push([now, mAvg]);\nwhile (st.hist.length && now - st.hist[0][0] > 3 * T.WINDOW_MS) st.hist.shift();\nlet ref = null;\nfor (let i = st.hist.length - 1; i >= 0; i--) {\n    if (now - st.hist[i][0] >= T.WINDOW_MS) { ref = st.hist[i]; break; }\n}\n// Mới khởi động, chưa đủ 1 phút: tạm dùng mẫu cũ nhất nếu đã cách ≥ 20 s\nif (!ref && st.hist.length && now - st.hist[0][0] >= 20000) ref = st.hist[0];\nlet v = ref ? (mAvg - ref[1]) / ((now - ref[0]) / 60000) : 0;\nv = Math.round(Math.max(-100, Math.min(100, v)) * 10) / 10;\n\nfunction up(L, v)   { if (L > T.R_L || (L > T.R_L2 && v >= T.R_V)) return 2; if (L > T.Y_L || v >= T.Y_V) return 1; return 0; }\nfunction keep(L, v) { if (L > T.R_L_DN || (L > T.R_L2_DN && v >= T.R_V_DN)) return 2; if (L > T.Y_L_DN || v >= T.Y_V_DN) return 1; return 0; }\n\nconst cur = st.level;\nlet next = cur;\nconst u = up(lAvg, v);\nif (u > cur) {\n    next = u;                                         // nguy hiểm hơn → lên mức ngay\n} else {\n    const k = keep(lAvg, v);\n    if (k < cur && now - st.since >= T.HOLD_MS) next = k;\n}\nif (next !== cur) { st.level = next; st.since = now; }\nall[id] = st;\nflow.set('drain_state', all);\n\nconst r1 = x => Math.round(x * 10) / 10;\nconst data = { m: r1(mAvg), L: r1(lAvg), v, v_ready: !!ref, d: p.d };\nconst out = { topic: 'level', node: id, kind: 'drain', level: LV[st.level], data };\nif (id !== 'cong1') return [out, null, null, null, null, null];\n\nconst vText = (v >= 0 ? '+' : '') + v.toFixed(1) + ' cm/phút' + (ref ? '' : ' (đang tích luỹ)');\nreturn [\n    out,\n    { payload: data.L },\n    { payload: VN[st.level] },\n    { payload: vText },\n    { payload: data.m + ' cm' },\n    [{ topic: 'Mực nước (cm)', payload: data.m }, { topic: 'Độ đầy (%)', payload: data.L }]\n];\n",
+        "outputs": 6,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 640,
+        "y": 60,
+        "wires": [
+            [
+                "fn_alert_engine"
+            ],
+            [
+                "ui_gauge_fill"
+            ],
+            [
+                "ui_text_cong1_level"
+            ],
+            [
+                "ui_text_rise_rate"
+            ],
+            [
+                "ui_text_cong1_m"
+            ],
+            [
+                "ui_chart_cong1"
+            ]
+        ]
+    },
+    {
+        "id": "fn_road",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Node đường: mức do node gửi lên",
+        "func": "// Node đường tự phân mức (để vẫn cảnh báo khi mất mạng) → Edge chỉ lấy mức node gửi lên.\nconst LV = ['green', 'yellow', 'red'];\nconst VN = {\n    green:  '🟢 XANH – đi lại bình thường',\n    yellow: '🟡 VÀNG – xe máy đi chậm, cẩn trọng',\n    red:    '🔴 ĐỎ – không nên đi xe máy'\n};\nconst id = msg.node, p = msg.payload;\nconst h = Number(p.h);\nif (!isFinite(h)) { node.warn(id + ': thiếu h'); return null; }\n\nlet level = p.muc;\nif (!LV.includes(level)) level = h > 20 ? 'red' : h >= 10 ? 'yellow' : 'green';   // dự phòng\n\nconst r1 = x => Math.round(x * 10) / 10;\nconst data = { h: r1(h), stable: p.stable !== false, buzzer_muted: !!p.buzzer_muted, d: p.d };\nconst out = { topic: 'level', node: id, kind: 'road', level, data };\nif (id !== 'duong1') return [out, null, null, null, null];\n\nconst buzzer = level === 'red'\n    ? (data.buzzer_muted ? '🔇 Đã tắt thủ công' : '🔊 Đang kêu')\n    : 'Tắt (chỉ kêu ở mức ĐỎ)';\nconst lvlText = VN[level] + (data.stable ? '' : ' · đang chờ ổn định');\nreturn [out, { payload: data.h }, { payload: lvlText }, { payload: buzzer },\n        { topic: 'Độ sâu ngập (cm)', payload: data.h }];\n",
+        "outputs": 5,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 640,
+        "y": 180,
+        "wires": [
+            [
+                "fn_alert_engine"
+            ],
+            [
+                "ui_gauge_depth"
+            ],
+            [
+                "ui_text_duong1_level"
+            ],
+            [
+                "ui_text_buzzer"
+            ],
+            [
+                "ui_chart_duong1"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_in_status",
+        "type": "mqtt in",
+        "z": "tab_flood_main",
+        "name": "flood/+/status",
+        "topic": "flood/+/status",
+        "qos": "1",
+        "datatype": "utf8",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 300,
+        "wires": [
+            [
+                "fn_status"
+            ]
+        ]
+    },
+    {
+        "id": "fn_status",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Online / offline (Last Will)",
+        "func": "// flood/<id>/status: \"online\" khi node kết nối, \"offline\" do broker phát Last Will khi node rớt.\nconst id = String(msg.topic).split('/')[1];\nconst s = String(msg.payload).trim().toLowerCase();\nif (s !== 'online' && s !== 'offline') return null;\nconst txt = s === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE';\nconst out = { topic: 'conn', node: id, payload: s };\nreturn [out, id === 'cong1' ? { payload: txt } : null, id === 'duong1' ? { payload: txt } : null];\n",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 300,
+        "wires": [
+            [
+                "fn_alert_engine"
+            ],
+            [
+                "ui_text_cong1_online"
+            ],
+            [
+                "ui_text_duong1_online"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_in_info",
+        "type": "mqtt in",
+        "z": "tab_flood_main",
+        "name": "flood/+/info",
+        "topic": "flood/+/info",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 360,
+        "wires": [
+            [
+                "fn_info"
+            ]
+        ]
+    },
+    {
+        "id": "fn_info",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Lưu heartbeat thiết bị",
+        "func": "// Heartbeat thiết bị (fw, ip, rssi, uptime, lỗi đo, cấu hình đang chạy) → bảng thiết bị.\n// Đồng thời điền cấu hình thực tế của node vào form (chỉ khi cấu hình thay đổi, để không xoá chữ đang gõ).\nconst id = String(msg.topic).split('/')[1];\nif (typeof msg.payload !== 'object' || !msg.payload) return null;\nconst info = flow.get('info') || {};\ninfo[id] = Object.assign({}, msg.payload, { received: Date.now() });\nflow.set('info', info);\n\nconst cfg = msg.payload.cfg;\nif (!cfg) return null;\nconst shown = flow.get('form_prefill') || {};\nconst key = JSON.stringify(cfg);\nif (shown[id] === key) return null;\nshown[id] = key;\nflow.set('form_prefill', shown);\nconst o = { payload: cfg };\nreturn [id === 'cong1' ? o : null, id === 'duong1' ? o : null];\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 360,
+        "wires": [
+            [
+                "ui_form_cong"
+            ],
+            [
+                "ui_form_duong"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_in_event",
+        "type": "mqtt in",
+        "z": "tab_flood_main",
+        "name": "flood/+/event",
+        "topic": "flood/+/event",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 420,
+        "wires": [
+            [
+                "fn_event"
+            ]
+        ]
+    },
+    {
+        "id": "fn_event",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Sự kiện từ node",
+        "func": "// Sự kiện từ node (hiệu chuẩn, áp dụng/từ chối cấu hình, còi...) → nhật ký.\n// Sau khi hiệu chuẩn, cập nhật lại cấu hình retained trên broker để lần kết nối sau\n// broker không ghi đè giá trị vừa đo.\nconst id = String(msg.topic).split('/')[1];\nconst e = msg.payload || {};\nlet republish = null, text;\n\nswitch (e.event) {\n    case 'calibrated': {\n        text = `📏 ${id}: hiệu chuẩn xong, ${e.key} = ${e.value} cm`;\n        const cfgs = flow.get('cfg') || {};\n        const c = Object.assign({}, cfgs[id] || {});\n        c[e.key] = e.value;\n        cfgs[id] = c;\n        flow.set('cfg', cfgs);\n        republish = { topic: `flood/${id}/config`, payload: c, retain: true, qos: 1 };\n        break;\n    }\n    case 'calibrate_failed': text = `⚠️ ${id}: hiệu chuẩn thất bại (${e.reason || 'không đo được'})`; break;\n    case 'config_applied':   text = `⚙️ ${id}: đã áp dụng cấu hình mới`; break;\n    case 'config_rejected':  text = `⛔ ${id}: từ chối cấu hình – ${e.reason || ''}`; break;\n    case 'buzzer':           text = `${e.muted ? '🔇' : '🔔'} ${id}: còi ${e.muted ? 'đã tắt' : 'sẵn sàng kêu lại'}`; break;\n    case 'rebooting':        text = `🔄 ${id}: đang khởi động lại`; break;\n    default:                 text = `${id}: ${e.event || 'sự kiện'} ${e.reason || ''}`;\n}\nreturn [republish, { payload: { t: Date.now(), text } }];\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 420,
+        "wires": [
+            [
+                "mqtt_out_dyn"
+            ],
+            [
+                "fn_log"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_in_config",
+        "type": "mqtt in",
+        "z": "tab_flood_main",
+        "name": "flood/+/config",
+        "topic": "flood/+/config",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 480,
+        "wires": [
+            [
+                "fn_cfg_store"
+            ]
+        ]
+    },
+    {
+        "id": "fn_cfg_store",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Lưu bản sao cấu hình",
+        "func": "// Node-RED cũng subscribe flood/+/config (retained) để khôi phục bản sao cấu hình khi khởi động lại.\nconst id = String(msg.topic).split('/')[1];\nif (typeof msg.payload !== 'object' || !msg.payload) return null;\nconst cfgs = flow.get('cfg') || {};\ncfgs[id] = msg.payload;\nflow.set('cfg', cfgs);\nreturn null;\n",
+        "outputs": 0,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "fn_alert_engine",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Bộ quyết định cảnh báo & sự cố",
+        "func": "// ═══════════════════════════════════════════════════════════════════════════\n// Bộ quyết định cảnh báo (Edge IT)\n//  - Gửi Telegram mỗi khi mức của một node thay đổi (cả lên và xuống)\n//  - Cống lên ĐỎ → mở \"sự cố\": gửi YÊU CẦU bật bơm/mở van kèm nút Xác nhận\n//  - Chưa xác nhận sau 10 phút mà cống vẫn ĐỎ → nhắc lại\n//  - Cống ĐỎ + đường ≥ VÀNG → \"Ngập đang lan rộng\" + thời gian báo trước\n//  - Node offline (Last Will) hoặc im lặng > 30 s → báo mất kết nối\n// Đầu vào (msg.topic): level | conn | tick | ack | query\n// Đầu ra: 1 Telegram · 2 tình trạng chung · 3 yêu cầu vận hành · 4 nhật ký\n//         5 trạng thái tổng hợp → flood/edge/state (retained, bridge lên cloud)\n//         6 bản ghi sự cố đã đóng → flood/edge/incident (cloud lưu để thống kê)\n// ═══════════════════════════════════════════════════════════════════════════\nconst REMIND_MS = 10 * 60 * 1000;\nconst STALE_MS  = 30 * 1000;\nconst LVN  = { green: '🟢 XANH', yellow: '🟡 VÀNG', red: '🔴 ĐỎ' };\nconst RANK = { green: 0, yellow: 1, red: 2 };\n\nconst now = Date.now();\nconst chatId = global.get('telegram_chat_id');\nconst reg = flow.get('reg') || {};\nconst incidents = flow.get('incidents') || {};\nconst devInfo = flow.get('info') || {};\nconst tg = [], logs = [], closed = [];\n\nconst hhmm = t => new Date(t).toLocaleTimeString('vi-VN', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });\nconst dur = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? s + ' giây' : Math.floor(s / 60) + ' phút ' + (s % 60) + ' giây'; };\nconst md = s => String(s).replace(/([_*`\\[])/g, '\\\\$1');\nconst sign = v => (v >= 0 ? '+' : '') + v;\nfunction kindOf(id) {\n    const r = reg[id] || {}, i = devInfo[id] || {};\n    return r.kind || (i.role === 'drain' ? 'drain' : i.role === 'road' ? 'road' : '');\n}\nconst label = id => ({ drain: 'Cống ', road: 'Đường ' }[kindOf(id)] || 'Node ') + id;\nconst entry = id => (reg[id] = reg[id] || { id });\n\nfunction send(text, keyboard, to) {\n    const pl = { chatId: to || chatId, type: 'message', content: text };\n    if (keyboard) pl.options = { reply_markup: JSON.stringify({ inline_keyboard: keyboard }) };\n    tg.push({ payload: pl });\n}\nfunction log(text) { logs.push({ payload: { t: now, text } }); }\nconst ackButton = inc => [[{ text: '✅ Đã xử lý (bật bơm / mở van)', callback_data: 'ack:' + inc.key }]];\n\nfunction closeIncident(id) {\n    const inc = incidents[id];\n    if (!inc) return '';\n    delete incidents[id];\n    closed.push({ topic: 'flood/edge/incident', qos: 1, retain: false, payload: {\n        key: inc.key, node: id, start: inc.start, end: now, duration_s: Math.round((now - inc.start) / 1000),\n        ack: inc.ack, ack_by: inc.ack_by || null, ack_at: inc.ack_at || null,\n        response_s: inc.ack ? Math.round((inc.ack_at - inc.start) / 1000) : null,\n        reminders: inc.reminders, max_L: inc.max_L || null, lead_s: inc.lead_s || null } });\n    const ackTxt = inc.ack ? `đã xác nhận bởi ${md(inc.ack_by)} sau ${dur(inc.ack_at - inc.start)}` : 'CHƯA có xác nhận xử lý';\n    log(`Đóng sự cố ${id}: mức đỏ kéo dài ${dur(now - inc.start)}, ${inc.ack ? 'đã' : 'chưa'} xác nhận`);\n    return `\\n📋 Sự cố mức đỏ kéo dài ${dur(now - inc.start)}, ${ackTxt}.`;\n}\n\nfunction drainChanged(id, prev, cur, d) {\n    const info = `Mực nước ${d.L}% (${d.m} cm), tốc độ dâng ${sign(d.v)} cm/phút`;\n    if (cur === 'red') {\n        const inc = { key: id + '-' + now, node: id, start: now, last_sent: now, reminders: 0, ack: false, max_L: d.L };\n        incidents[id] = inc;\n        send(`🔴 *KHẨN – ${label(id)}*\\n${info}.\\n👉 *YÊU CẦU bật bơm / mở van* chuyển dòng sang trục cống hoặc hồ điều hòa còn dung tích.\\nBấm nút bên dưới sau khi đã xử lý.`, ackButton(inc));\n        log(`${label(id)} lên ĐỎ (${d.L}%, ${sign(d.v)} cm/ph) → gửi yêu cầu vận hành`);\n        return;\n    }\n    const summary = prev === 'red' ? closeIncident(id) : '';\n    if (cur === 'yellow') {\n        send(`🟡 *THEO DÕI – ${label(id)}*\\n${info}.${summary}`);\n        log(`${label(id)} ${prev === 'red' ? 'hạ xuống' : 'lên'} VÀNG (${d.L}%, ${sign(d.v)} cm/ph)`);\n    } else {\n        send(`🟢 *${label(id)} trở về an toàn*\\n${info}.${summary}`);\n        log(`${label(id)} trở về XANH (${d.L}%)`);\n    }\n}\n\nfunction roadChanged(id, prev, cur, d) {\n    const text = {\n        red:    `🔴 *KHẨN – ${label(id)} ngập ${d.h} cm*\\nKhông nên đi xe máy. Đèn đỏ và còi đang bật tại chỗ.`,\n        yellow: prev === 'red'\n            ? `🟡 *${label(id)}* giảm còn ${d.h} cm – xe máy đi chậm, cẩn trọng.`\n            : `🟡 *THEO DÕI – ${label(id)} ngập ${d.h} cm*\\nXe máy đi chậm, cẩn trọng.`,\n        green:  `🟢 *${label(id)} hết ngập* (${d.h} cm) – đi lại bình thường.`\n    }[cur];\n    send(text);\n    log(`${label(id)}: ${LVN[prev]} → ${LVN[cur]} (${d.h} cm)`);\n}\n\nfunction setOnline(id, on) {\n    const r = entry(id);\n    const was = r.online;\n    r.online = on;\n    if (!on && was !== false) {\n        send(`⚠️ *Mất kết nối ${label(id)}*\\nBroker phát Last Will lúc ${hhmm(now)}. Dữ liệu tại điểm này đang không được cập nhật.`);\n        log(`${label(id)} OFFLINE`);\n    }\n    if (on && was === false) {\n        send(`✅ ${label(id)} đã kết nối lại.`);\n        log(`${label(id)} ONLINE trở lại`);\n    }\n}\n\nfunction checkSpread() {\n    const vals = Object.values(reg).filter(r => r.online !== false);\n    const redDrains = vals.filter(r => r.kind === 'drain' && r.level === 'red');\n    const wetRoads  = vals.filter(r => r.kind === 'road' && RANK[r.level] >= 1);\n    const spread = redDrains.length > 0 && wetRoads.length > 0;\n    const was = flow.get('spread') || false;\n    if (spread && !was) {\n        const firstRed = Math.min(...redDrains.map(r => (incidents[r.id] || {}).start || now));\n        const lead = now - firstRed;\n        flow.set('last_lead_ms', lead);\n        for (const r of redDrains) if (incidents[r.id] && !incidents[r.id].lead_s) incidents[r.id].lead_s = Math.round(lead / 1000);\n        send(`🌊 *NGẬP ĐANG LAN RỘNG*\\n${redDrains.map(r => label(r.id)).join(', ')} ở mức ĐỎ và ${wetRoads.map(r => label(r.id) + ' ngập ' + r.data.h + ' cm').join(', ')}.\\n⏱ Cống đã báo đỏ trước ${dur(lead)} so với lúc nước lên mặt đường.\\n👉 Ưu tiên điều phối bơm và phân luồng giao thông.`);\n        log(`Ngập lan rộng – cống báo trước ${dur(lead)}`);\n    } else if (!spread && was) {\n        log('Hết tình trạng ngập lan rộng');\n    }\n    flow.set('spread', spread);\n    return spread;\n}\n\nswitch (msg.topic) {\n    case 'level': {\n        const id = msg.node;\n        const r = entry(id);\n        r.kind = msg.kind;\n        r.data = msg.data;\n        r.last_seen = now;\n        if (r.online === false) setOnline(id, true);      // có dữ liệu ⇒ đã online\n        else r.online = true;\n        if (r.stale) {\n            r.stale = false;\n            send(`✅ ${label(id)} gửi dữ liệu trở lại.`);\n            log(`${label(id)} có dữ liệu trở lại`);\n        }\n        const prev = r.level || 'green';\n        r.level = msg.level;\n        if (msg.kind === 'drain' && incidents[id]) incidents[id].max_L = Math.max(incidents[id].max_L || 0, msg.data.L);\n        if (prev !== msg.level) (msg.kind === 'drain' ? drainChanged : roadChanged)(id, prev, msg.level, msg.data);\n        break;\n    }\n    case 'conn':\n        setOnline(msg.node, msg.payload === 'online');\n        break;\n\n    case 'tick': {\n        for (const r of Object.values(reg)) {\n            if (r.online !== false && r.last_seen && !r.stale && now - r.last_seen > STALE_MS) {\n                r.stale = true;\n                send(`⚠️ *${label(r.id)} không gửi dữ liệu* trong ${dur(now - r.last_seen)} (kết nối vẫn mở – kiểm tra cảm biến).`);\n                log(`${label(r.id)} không có dữ liệu mới`);\n            }\n        }\n        for (const inc of Object.values(incidents)) {\n            const r = reg[inc.node];\n            if (!inc.ack && r && r.level === 'red' && now - inc.last_sent >= REMIND_MS) {\n                inc.reminders++;\n                inc.last_sent = now;\n                send(`⏰ *NHẮC LẠI lần ${inc.reminders} – ${label(inc.node)}*\\nCống vẫn ở mức ĐỎ sau ${dur(now - inc.start)} mà chưa có xác nhận xử lý.\\nHiện tại: ${r.data.L}%, dâng ${sign(r.data.v)} cm/phút.\\n👉 *YÊU CẦU bật bơm / mở van.*`, ackButton(inc));\n                log(`Nhắc lại yêu cầu vận hành ${inc.node} (lần ${inc.reminders})`);\n            }\n        }\n        break;\n    }\n    case 'ack': {\n        const by = msg.by || 'Người quản lý', src = msg.source || 'Dashboard';\n        const pending = Object.values(incidents).filter(i => !i.ack && (!msg.key || i.key === msg.key));\n        let reply;\n        if (!pending.length) {\n            const already = msg.key && Object.values(incidents).some(i => i.key === msg.key);\n            reply = already ? 'Sự cố này đã được xác nhận trước đó.' : 'Không còn yêu cầu nào đang chờ (sự cố có thể đã đóng).';\n            if (src === 'Dashboard') log('Bấm xác nhận nhưng không có yêu cầu nào đang chờ');\n        } else {\n            for (const inc of pending) {\n                inc.ack = true; inc.ack_at = now; inc.ack_by = by;\n                send(`✅ *${md(by)}* (qua ${src}) đã xác nhận xử lý sự cố ${label(inc.node)} lúc ${hhmm(now)} – phản hồi sau ${dur(now - inc.start)}.`);\n                log(`${by} xác nhận xử lý ${inc.node} qua ${src}, phản hồi sau ${dur(now - inc.start)}`);\n            }\n            reply = 'Đã ghi nhận xác nhận. Cảm ơn!';\n        }\n        if (msg.cb && msg.cb.id) {\n            tg.push({ payload: { chatId: msg.cb.chatId, type: 'answerCallbackQuery', callbackQueryId: msg.cb.id, content: reply } });\n        }\n        break;\n    }\n    case 'query': {\n        const lines = Object.values(reg).sort((a, b) => a.id.localeCompare(b.id)).map(r => {\n            const conn = r.online === false ? '🔴 offline' : r.stale ? '🟠 không có dữ liệu' : '🟢 online';\n            const val = !r.data ? 'chưa có dữ liệu'\n                : r.kind === 'drain' ? `${r.data.L}% (${r.data.m} cm), dâng ${sign(r.data.v)} cm/ph`\n                : `ngập ${r.data.h} cm`;\n            return `${LVN[r.level] || '⚪'} ${label(r.id)}: ${val} · ${conn}`;\n        });\n        const open = Object.values(incidents).map(i =>\n            `• ${label(i.node)}: từ ${hhmm(i.start)}, ${i.ack ? 'đã xác nhận bởi ' + md(i.ack_by) : 'CHƯA xác nhận'}`);\n        send(`📊 *Trạng thái lúc ${hhmm(now)}*\\n${lines.join('\\n') || 'Chưa có node nào.'}` +\n             (open.length ? '\\n\\n🚨 Yêu cầu vận hành:\\n' + open.join('\\n') : ''), null, msg.chatId);\n        break;\n    }\n    default:\n        return null;\n}\n\nconst spread = checkSpread();\nconst vals = Object.values(reg);\nconst worst = Math.max(0, ...vals.filter(r => r.online !== false).map(r => RANK[r.level] || 0));\nconst offline = vals.filter(r => r.online === false || r.stale).map(r => r.id);\nlet combined = spread ? '🌊 NGẬP ĐANG LAN RỘNG – cống đỏ và đường đã ngập'\n    : ['🟢 AN TOÀN', '🟡 CẦN THEO DÕI', '🔴 NGUY HIỂM'][worst];\nif (offline.length) combined += ' · ⚠️ mất kết nối: ' + offline.join(', ');\n\nconst open = Object.values(incidents);\nconst incText = !open.length ? 'Không có yêu cầu nào'\n    : open.map(i => `${label(i.node)}: bật bơm/mở van (từ ${hhmm(i.start)}) – ` +\n        (i.ack ? `✅ ${i.ack_by} đã xác nhận` : '⏳ chờ xác nhận' + (i.reminders ? `, đã nhắc ${i.reminders} lần` : ''))).join(' | ');\n\nflow.set('reg', reg);\nflow.set('incidents', incidents);\nconst state = {\n    ts: now, combined, worst: ['green', 'yellow', 'red'][worst], spread, lead_ms: flow.get('last_lead_ms') || null,\n    nodes: Object.fromEntries(vals.map(r => [r.id, {\n        kind: r.kind || kindOf(r.id) || null, level: r.level || null, online: r.online !== false,\n        stale: !!r.stale, last_seen: r.last_seen || null, data: r.data || null }])),\n    incidents: open.map(i => ({ key: i.key, node: i.node, start: i.start, ack: i.ack, ack_by: i.ack_by || null,\n        ack_at: i.ack_at || null, reminders: i.reminders, max_L: i.max_L || null }))\n};\nreturn [tg.length ? tg : null, { payload: combined }, { payload: incText }, logs.length ? logs : null,\n        { topic: 'flood/edge/state', payload: state, retain: true, qos: 0 }, closed.length ? closed : null];\n",
+        "outputs": 6,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 260,
+        "wires": [
+            [
+                "fn_tg_out"
+            ],
+            [
+                "ui_text_combined"
+            ],
+            [
+                "ui_text_incident"
+            ],
+            [
+                "fn_log"
+            ],
+            [
+                "mqtt_out_dyn"
+            ],
+            [
+                "mqtt_out_dyn"
+            ]
+        ]
+    },
+    {
+        "id": "inj_tick",
+        "type": "inject",
+        "z": "tab_flood_main",
+        "name": "Mỗi 30 s: nhắc lại / watchdog",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "30",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 5,
+        "topic": "tick",
+        "x": 680,
+        "y": 340,
+        "wires": [
+            [
+                "fn_alert_engine"
+            ]
+        ]
+    },
+    {
+        "id": "fn_tg_out",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Lọc tin Telegram",
+        "func": "// Chặn tin khi chưa cấu hình TELEGRAM_CHAT_ID (tránh lỗi node telegram sender).\nconst p = msg.payload;\nif (!p || !p.chatId) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'Bỏ qua: chưa đặt TELEGRAM_CHAT_ID' });\n    return null;\n}\nnode.status({ fill: 'green', shape: 'dot', text: 'Gửi lúc ' + new Date().toLocaleTimeString('vi-VN', { hour12: false }) });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1180,
+        "y": 220,
+        "wires": [
+            [
+                "telegram_sender"
+            ]
+        ]
+    },
+    {
+        "id": "telegram_sender",
+        "type": "telegram sender",
+        "z": "tab_flood_main",
+        "name": "Gửi Telegram",
+        "bot": "telegram_bot_config",
+        "haserroroutput": false,
+        "outputs": 1,
+        "x": 1380,
+        "y": 220,
+        "wires": [
+            [
+                "debug_telegram"
+            ]
+        ]
+    },
+    {
+        "id": "debug_telegram",
+        "type": "debug",
+        "z": "tab_flood_main",
+        "name": "Telegram",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1560,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "tg_event_cb",
+        "type": "telegram event",
+        "z": "tab_flood_main",
+        "name": "Nút Xác nhận (callback)",
+        "bot": "telegram_bot_config",
+        "event": "callback_query",
+        "autoanswer": false,
+        "x": 180,
+        "y": 560,
+        "wires": [
+            [
+                "fn_tg_callback"
+            ]
+        ]
+    },
+    {
+        "id": "fn_tg_callback",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Xác nhận từ Telegram",
+        "func": "// Người quản lý bấm nút \"Đã xử lý\" trong tin nhắn Telegram (callback_data = \"ack:<mã sự cố>\").\n// Chỉ chấp nhận xác nhận từ chat đã cấu hình (TELEGRAM_CHAT_ID).\nconst p = msg.payload || {};\nconst data = String(p.content || '');\nif (!data.startsWith('ack:')) return null;\n\nconst allowed = String(global.get('telegram_chat_id') || '');\nif (allowed && String(p.chatId) !== allowed) {\n    node.warn('Bỏ qua xác nhận từ chat không được phép: ' + p.chatId);\n    return null;\n}\nconst from = (msg.originalMessage && msg.originalMessage.from) || p.from || {};\nconst by = [from.first_name, from.last_name].filter(Boolean).join(' ') || from.username || 'Người quản lý';\nreturn { topic: 'ack', key: data.slice(4), by, source: 'Telegram', cb: { chatId: p.chatId, id: p.callbackQueryId } };\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 560,
+        "wires": [
+            [
+                "fn_alert_engine"
+            ]
+        ]
+    },
+    {
+        "id": "tg_cmd_status",
+        "type": "telegram command",
+        "z": "tab_flood_main",
+        "name": "/status",
+        "command": "/status",
+        "description": "Xem trạng thái các điểm đo",
+        "registercommand": true,
+        "language": "",
+        "scope": "default",
+        "bot": "telegram_bot_config",
+        "strict": false,
+        "hasresponse": false,
+        "useregex": false,
+        "removeregexcommand": false,
+        "outputs": 1,
+        "x": 150,
+        "y": 620,
+        "wires": [
+            [
+                "fn_tg_query"
+            ]
+        ]
+    },
+    {
+        "id": "fn_tg_query",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Lệnh /status",
+        "func": "// Lệnh /status: ai nhắn bot cũng xem được trạng thái (thông tin công khai cho người dân).\nconst p = msg.payload || {};\nif (!p.chatId) return null;\nreturn { topic: 'query', chatId: p.chatId };\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 620,
+        "wires": [
+            [
+                "fn_alert_engine"
+            ]
+        ]
+    },
+    {
+        "id": "ui_btn_ack",
+        "type": "ui_button",
+        "z": "tab_flood_main",
+        "name": "✅ Xác nhận đã xử lý",
+        "group": "ui_group_alert",
+        "order": 3,
+        "width": "4",
+        "height": "1",
+        "passthru": false,
+        "label": "✅ Xác nhận đã xử lý",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "#27ae60",
+        "className": "",
+        "icon": "",
+        "payload": "dashboard",
+        "payloadType": "str",
+        "topic": "ack",
+        "topicType": "str",
+        "x": 680,
+        "y": 400,
+        "wires": [
+            [
+                "fn_alert_engine"
+            ]
+        ]
+    },
+    {
+        "id": "fn_log",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Nhật ký sự kiện",
+        "func": "// Nhật ký sự kiện: hiển thị trên dashboard (30 dòng gần nhất) và gửi lên cloud (flood/edge/log).\nconst e = msg.payload;\nif (!e || !e.text) return null;\nconst list = flow.get('eventlog') || [];\nlist.unshift({\n    time: new Date(e.t || Date.now()).toLocaleTimeString('vi-VN', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' }),\n    text: e.text\n});\nwhile (list.length > 30) list.pop();\nflow.set('eventlog', list);\nreturn [{ payload: list }, { topic: 'flood/edge/log', qos: 1, retain: false, payload: { t: e.t || Date.now(), text: e.text } }];\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1180,
+        "y": 400,
+        "wires": [
+            [
+                "ui_log"
+            ],
+            [
+                "mqtt_out_dyn"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_in_cloud",
+        "type": "mqtt in",
+        "z": "tab_flood_main",
+        "name": "Lệnh từ Web console (cloud)",
+        "topic": "flood/cloud/#",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 660,
+        "wires": [
+            [
+                "fn_cloud_ack"
+            ]
+        ]
+    },
+    {
+        "id": "fn_cloud_ack",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Kiểm duyệt lệnh từ cloud",
+        "func": "// Lệnh từ Web console trên cloud, đi xuống qua MQTT bridge (chỉ topic flood/cloud/#).\n// Cloud KHÔNG điều khiển node trực tiếp: gateway nhận, kiểm tra như lệnh từ dashboard rồi mới chuyển xuống node.\n//   flood/cloud/ack            {key?, by}        → xác nhận xử lý sự cố\n//   flood/cloud/config/<id>    {khoá: số,...}    → form cấu hình (kiểm tra, publish retained cục bộ)\n//   flood/cloud/cmd/<id>       {cmd}             → calibrate | report\n//   flood/cloud/alarm/<id>     \"off\" | \"on\"      → tắt / bật lại còi\nconst parts = String(msg.topic).split('/');\nconst kind = parts[2], id = parts[3];\nconst p = msg.payload;\nconst validId = /^[a-z0-9_-]{1,20}$/.test(id || '');\n\nif (kind === 'ack') {\n    const o = (typeof p === 'object' && p) || {};\n    return [{ topic: 'ack', key: o.key || undefined, by: String(o.by || 'Quản lý').slice(0, 60), source: 'Web' }, null, null];\n}\nif (kind === 'config' && validId && typeof p === 'object' && p) {\n    return [null, { topic: id, payload: p, source: 'Web' }, null];\n}\nif (kind === 'cmd' && validId && p && ['calibrate', 'report'].includes(p.cmd)) {\n    return [null, null, { topic: `flood/${id}/cmd`, payload: { cmd: p.cmd }, source: 'Web' }];\n}\nif (kind === 'alarm' && validId && (p === 'off' || p === 'on')) {\n    return [null, null, { topic: `flood/${id}/alarm/cmd`, payload: p, source: 'Web' }];\n}\nnode.warn('Bỏ qua lệnh cloud không hợp lệ: ' + msg.topic);\nreturn null;\n",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 660,
+        "wires": [
+            [
+                "fn_alert_engine"
+            ],
+            [
+                "fn_cfg_submit"
+            ],
+            [
+                "fn_cmd"
+            ]
+        ]
+    },
+    {
+        "id": "ui_btn_mute",
+        "type": "ui_button",
+        "z": "tab_flood_main",
+        "name": "🔇 Tắt còi",
+        "group": "ui_group_duong1",
+        "order": 5,
+        "width": "3",
+        "height": "1",
+        "passthru": false,
+        "label": "🔇 Tắt còi",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "payload": "off",
+        "payloadType": "str",
+        "topic": "flood/duong1/alarm/cmd",
+        "topicType": "str",
+        "x": 150,
+        "y": 700,
+        "wires": [
+            [
+                "fn_cmd"
+            ]
+        ]
+    },
+    {
+        "id": "ui_btn_unmute",
+        "type": "ui_button",
+        "z": "tab_flood_main",
+        "name": "🔔 Bật lại còi",
+        "group": "ui_group_duong1",
+        "order": 6,
+        "width": "3",
+        "height": "1",
+        "passthru": false,
+        "label": "🔔 Bật lại còi",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "payload": "on",
+        "payloadType": "str",
+        "topic": "flood/duong1/alarm/cmd",
+        "topicType": "str",
+        "x": 150,
+        "y": 740,
+        "wires": [
+            [
+                "fn_cmd"
+            ]
+        ]
+    },
+    {
+        "id": "ui_btn_cal_cong",
+        "type": "ui_button",
+        "z": "tab_flood_main",
+        "name": "📏 Hiệu chuẩn cong1 (khi cống RỖNG)",
+        "group": "ui_group_config",
+        "order": 3,
+        "width": "6",
+        "height": "1",
+        "passthru": false,
+        "label": "📏 Hiệu chuẩn cong1 (khi cống RỖNG)",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "payload": "{\"cmd\":\"calibrate\"}",
+        "payloadType": "json",
+        "topic": "flood/cong1/cmd",
+        "topicType": "str",
+        "x": 170,
+        "y": 780,
+        "wires": [
+            [
+                "fn_cmd"
+            ]
+        ]
+    },
+    {
+        "id": "ui_btn_cal_duong",
+        "type": "ui_button",
+        "z": "tab_flood_main",
+        "name": "📏 Hiệu chuẩn duong1 (khi đường KHÔ)",
+        "group": "ui_group_config",
+        "order": 4,
+        "width": "6",
+        "height": "1",
+        "passthru": false,
+        "label": "📏 Hiệu chuẩn duong1 (khi đường KHÔ)",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "payload": "{\"cmd\":\"calibrate\"}",
+        "payloadType": "json",
+        "topic": "flood/duong1/cmd",
+        "topicType": "str",
+        "x": 170,
+        "y": 820,
+        "wires": [
+            [
+                "fn_cmd"
+            ]
+        ]
+    },
+    {
+        "id": "fn_cmd",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Gửi lệnh xuống node",
+        "func": "// Lệnh từ dashboard (hoặc Web console qua cloud) xuống node (tắt/bật còi, hiệu chuẩn). Không retain: lệnh chỉ có nghĩa lúc gửi.\nconst id = String(msg.topic).split('/')[1];\nconst names = { off: 'tắt còi', on: 'bật lại còi' };\nconst what = (msg.payload && msg.payload.cmd === 'calibrate') ? 'hiệu chuẩn'\n    : names[msg.payload] || JSON.stringify(msg.payload);\nmsg.qos = 1;\nmsg.retain = false;\nreturn [msg, { payload: { t: Date.now(), text: `📤 ${msg.source === 'Web' ? '[Web] ' : ''}Gửi lệnh ${what} tới ${id}` } }];\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 760,
+        "wires": [
+            [
+                "mqtt_out_dyn"
+            ],
+            [
+                "fn_log"
+            ]
+        ]
+    },
+    {
+        "id": "ui_form_cong",
+        "type": "ui_form",
+        "z": "tab_flood_main",
+        "name": "Node cống cong1",
+        "label": "Node cống cong1",
+        "group": "ui_group_config",
+        "order": 1,
+        "width": "6",
+        "height": "1",
+        "options": [
+            {
+                "label": "H – cảm biến → đáy (cm)",
+                "value": "H",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Hmax – chiều sâu tính % (cm)",
+                "value": "Hmax",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Chu kỳ đo (s)",
+                "value": "period_s",
+                "type": "number",
+                "required": false,
+                "rows": null
+            }
+        ],
+        "formValue": {
+            "H": "",
+            "Hmax": "",
+            "period_s": ""
+        },
+        "payload": "",
+        "submit": "Gửi cấu hình",
+        "cancel": "Huỷ",
+        "topic": "cong1",
+        "topicType": "str",
+        "splitLayout": "",
+        "className": "",
+        "x": 160,
+        "y": 880,
+        "wires": [
+            [
+                "fn_cfg_submit"
+            ]
+        ]
+    },
+    {
+        "id": "ui_form_duong",
+        "type": "ui_form",
+        "z": "tab_flood_main",
+        "name": "Node đường duong1",
+        "label": "Node đường duong1",
+        "group": "ui_group_config",
+        "order": 2,
+        "width": "6",
+        "height": "1",
+        "options": [
+            {
+                "label": "d0 – cảm biến → mặt đường khô (cm)",
+                "value": "d0",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Ngưỡng VÀNG (cm)",
+                "value": "t_yellow",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Ngưỡng ĐỎ (cm)",
+                "value": "t_red",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "ĐỎ → VÀNG khi dưới (cm)",
+                "value": "t_red_low",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "VÀNG → XANH khi dưới (cm)",
+                "value": "t_yellow_low",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Thời gian ổn định (s)",
+                "value": "stable_s",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Chu kỳ đo (s)",
+                "value": "period_s",
+                "type": "number",
+                "required": false,
+                "rows": null
+            }
+        ],
+        "formValue": {
+            "d0": "",
+            "t_yellow": "",
+            "t_red": "",
+            "t_red_low": "",
+            "t_yellow_low": "",
+            "stable_s": "",
+            "period_s": ""
+        },
+        "payload": "",
+        "submit": "Gửi cấu hình",
+        "cancel": "Huỷ",
+        "topic": "duong1",
+        "topicType": "str",
+        "splitLayout": "",
+        "className": "",
+        "x": 160,
+        "y": 920,
+        "wires": [
+            [
+                "fn_cfg_submit"
+            ]
+        ]
+    },
+    {
+        "id": "fn_cfg_submit",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Kiểm tra & gửi cấu hình (retained)",
+        "func": "// Form cấu hình từ xa → kiểm tra → publish retained flood/<id>/config.\n// Node nhận, kiểm tra lại, lưu NVS và trả về sự kiện config_applied / config_rejected.\nconst id = msg.topic;                         // topic của ui_form = mã node\nconst ALLOWED = ['H', 'Hmax', 'd0', 't_yellow', 't_red', 't_red_low', 't_yellow_low', 'stable_s', 'period_s'];\nconst input = msg.payload || {};\nconst clean = {};\nfor (const [k, v] of Object.entries(input)) {\n    if (!ALLOWED.includes(k)) continue;\n    if (v === '' || v === null || v === undefined) continue;\n    const n = Number(v);\n    if (!isFinite(n)) return [null, { topic: 'Lỗi cấu hình', payload: `Giá trị \"${k}\" không hợp lệ` }, null];\n    clean[k] = n;\n}\nif (!Object.keys(clean).length) return [null, { topic: 'Cấu hình', payload: 'Chưa nhập giá trị nào' }, null];\n\nconst running = ((flow.get('info') || {})[id] || {}).cfg || {};\nconst stored = (flow.get('cfg') || {})[id] || {};\nconst c = Object.assign({}, running, stored, clean);\n\nconst errs = [];\nconst has = k => c[k] !== undefined;\nif (has('H') && (c.H < 20 || c.H > 450)) errs.push('H phải trong 20–450 cm');\nif (has('H') && has('Hmax') && (c.Hmax <= 0 || c.Hmax > c.H)) errs.push('Hmax phải trong (0, H]');\nif (has('d0') && (c.d0 < 20 || c.d0 > 450)) errs.push('d0 phải trong 20–450 cm (vùng mù cảm biến)');\nif (has('t_yellow') && has('t_red') && !(c.t_yellow > 0 && c.t_yellow < c.t_red)) errs.push('cần 0 < ngưỡng VÀNG < ngưỡng ĐỎ');\nif (has('t_red_low') && has('t_red') && has('t_yellow') && !(c.t_red_low >= c.t_yellow && c.t_red_low < c.t_red)) errs.push('cần ngưỡng VÀNG ≤ \"ĐỎ→VÀNG\" < ngưỡng ĐỎ');\nif (has('t_yellow_low') && has('t_yellow') && !(c.t_yellow_low >= 0 && c.t_yellow_low < c.t_yellow)) errs.push('cần 0 ≤ \"VÀNG→XANH\" < ngưỡng VÀNG');\nif (has('period_s') && (c.period_s < 1 || c.period_s > 60)) errs.push('chu kỳ đo 1–60 s');\nif (has('stable_s') && (c.stable_s < 0 || c.stable_s > 300)) errs.push('thời gian ổn định 0–300 s');\nif (errs.length) return [null, { topic: 'Lỗi cấu hình ' + id, payload: errs.join('; ') }, null];\n\nreturn [\n    { topic: `flood/${id}/config`, payload: c, retain: true, qos: 1 },\n    { topic: 'Cấu hình ' + id, payload: 'Đã gửi, chờ node xác nhận…' },\n    { payload: { t: Date.now(), text: `⚙️ ${msg.source === 'Web' ? '[Web] ' : ''}Gửi cấu hình tới ${id}: ${JSON.stringify(clean)}` } }\n];\n",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 900,
+        "wires": [
+            [
+                "mqtt_out_dyn"
+            ],
+            [
+                "ui_toast"
+            ],
+            [
+                "fn_log"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_out_dyn",
+        "type": "mqtt out",
+        "z": "tab_flood_main",
+        "name": "Gửi xuống node (topic động)",
+        "topic": "",
+        "qos": "1",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt_broker_config",
+        "x": 680,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "ui_toast",
+        "type": "ui_toast",
+        "z": "tab_flood_main",
+        "position": "top right",
+        "displayTime": "4",
+        "highlight": "",
+        "sendall": true,
+        "outputs": 0,
+        "ok": "OK",
+        "cancel": "",
+        "raw": false,
+        "className": "",
+        "topic": "",
+        "name": "Thông báo",
+        "x": 660,
+        "y": 900,
+        "wires": []
+    },
+    {
+        "id": "inj_devices",
+        "type": "inject",
+        "z": "tab_flood_main",
+        "name": "Mỗi 5 s",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "5",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 2,
+        "topic": "",
+        "x": 130,
+        "y": 980,
+        "wires": [
+            [
+                "fn_devices"
+            ]
+        ]
+    },
+    {
+        "id": "fn_devices",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Bảng thiết bị",
+        "func": "// Bảng thiết bị: gộp trạng thái (reg) + heartbeat (info). Node mới tự xuất hiện, không cần sửa flow.\nconst reg = flow.get('reg') || {}, info = flow.get('info') || {};\nconst now = Date.now();\nconst LVN = { green: '🟢 Xanh', yellow: '🟡 Vàng', red: '🔴 Đỏ' };\nconst ago = t => { if (!t) return '—'; const s = Math.round((now - t) / 1000); return s < 60 ? s + ' s trước' : Math.round(s / 60) + ' phút trước'; };\nconst upt = s => { if (s === undefined) return '—'; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h} giờ ${m} phút` : `${m} phút`; };\n\nconst ids = Array.from(new Set([...Object.keys(reg), ...Object.keys(info)])).sort();\nconst rows = ids.map(id => {\n    const r = reg[id] || {}, i = info[id] || {};\n    const kind = r.kind || (i.role === 'drain' ? 'drain' : i.role === 'road' ? 'road' : '');\n    const conn = r.online === false ? '🔴 Offline' : r.stale ? '🟠 Không có dữ liệu'\n        : (r.online === true || r.last_seen) ? '🟢 Online' : '⚪ Chưa rõ';\n    let reading = '—';\n    if (r.data) reading = kind === 'drain'\n        ? `${r.data.m} cm · ${r.data.L}% · ${r.data.v >= 0 ? '+' : ''}${r.data.v} cm/ph`\n        : `${r.data.h} cm`;\n    return {\n        id, kind: kind === 'drain' ? 'Cống' : kind === 'road' ? 'Đường' : '?', conn,\n        level: LVN[r.level] || '—', reading, last: ago(r.last_seen),\n        rssi: i.rssi !== undefined ? i.rssi + ' dBm' : '—', uptime: upt(i.uptime_s),\n        err: i.sensor_err !== undefined ? i.sensor_err : '—', fw: i.fw || '—', ip: i.ip || '—'\n    };\n});\nreturn { payload: rows };\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 980,
+        "wires": [
+            [
+                "ui_devices"
+            ]
+        ]
+    },
+    {
+        "id": "inj_thingspeak",
+        "type": "inject",
+        "z": "tab_flood_main",
+        "name": "Mỗi 15 s",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "15",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 15,
+        "topic": "",
+        "x": 130,
+        "y": 1040,
+        "wires": [
+            [
+                "fn_thingspeak"
+            ]
+        ]
+    },
+    {
+        "id": "fn_thingspeak",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Gộp dữ liệu → ThingSpeak",
+        "func": "// Gộp dữ liệu hai node vào MỘT lần cập nhật / 15 s (giới hạn kênh miễn phí của ThingSpeak).\n// field1 m cống (cm) · field2 L (%) · field3 v (cm/phút) · field4 h đường (cm)\n// field5 mức cống · field6 mức đường (0 xanh, 1 vàng, 2 đỏ)\nconst key = global.get('thingspeak_write_key');\nif (!key) { node.status({ fill: 'yellow', shape: 'ring', text: 'Chưa có THINGSPEAK_WRITE_API_KEY' }); return null; }\n\nconst reg = flow.get('reg') || {};\nconst c = reg.cong1, d = reg.duong1;\nconst code = { green: 0, yellow: 1, red: 2 };\nconst f = {};\nif (c && c.data) { f.field1 = c.data.m; f.field2 = c.data.L; f.field3 = c.data.v; f.field5 = code[c.level]; }\nif (d && d.data) { f.field4 = d.data.h; f.field6 = code[d.level]; }\nif (!Object.keys(f).length) return null;\n\nconst lastSeen = Math.max((c && c.last_seen) || 0, (d && d.last_seen) || 0);\nif (lastSeen <= (context.get('lastSeen') || 0)) {\n    node.status({ fill: 'grey', shape: 'ring', text: 'Không có dữ liệu mới' });\n    return null;\n}\ncontext.set('lastSeen', lastSeen);\n\nmsg.url = 'https://api.thingspeak.com/update';\nmsg.method = 'POST';\nmsg.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload = 'api_key=' + encodeURIComponent(key) +\n    Object.entries(f).map(([k, v]) => '&' + k + '=' + encodeURIComponent(v)).join('');\nnode.status({ fill: 'green', shape: 'dot', text: 'Gửi lúc ' + new Date().toLocaleTimeString('vi-VN', { hour12: false }) });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 1040,
+        "wires": [
+            [
+                "http_thingspeak"
+            ]
+        ]
+    },
+    {
+        "id": "http_thingspeak",
+        "type": "http request",
+        "z": "tab_flood_main",
+        "name": "POST ThingSpeak",
+        "method": "use",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "tls_thingspeak",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 580,
+        "y": 1040,
+        "wires": [
+            [
+                "debug_thingspeak"
+            ]
+        ]
+    },
+    {
+        "id": "debug_thingspeak",
+        "type": "debug",
+        "z": "tab_flood_main",
+        "name": "ThingSpeak",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 780,
+        "y": 1040,
+        "wires": []
+    },
+    {
+        "id": "inject_init_globals",
+        "type": "inject",
+        "z": "tab_flood_main",
+        "name": "Khởi tạo biến (env)",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.5,
+        "topic": "",
+        "x": 150,
+        "y": 1100,
+        "wires": [
+            [
+                "fn_init_globals"
+            ]
+        ]
+    },
+    {
+        "id": "fn_init_globals",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Đọc TELEGRAM_CHAT_ID, THINGSPEAK key",
+        "func": "// Đọc thông tin bí mật từ biến môi trường (start_all.ps1 nạp từ config/secrets.env).\nconst chat = env.get('TELEGRAM_CHAT_ID');\nconst key = env.get('THINGSPEAK_WRITE_API_KEY');\nglobal.set('telegram_chat_id', chat ? String(chat) : null);\nglobal.set('thingspeak_write_key', key || null);\nnode.status({\n    fill: chat && key ? 'green' : 'yellow', shape: 'dot',\n    text: `Telegram: ${chat ? 'OK' : 'thiếu chat id'} · ThingSpeak: ${key ? 'OK' : 'thiếu key'}`\n});\nreturn null;\n",
+        "outputs": 0,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 1100,
+        "wires": []
+    },
+    {
+        "id": "ui_gauge_fill",
+        "type": "ui_gauge",
+        "z": "tab_flood_main",
+        "name": "Độ đầy cống L (%)",
+        "group": "ui_group_cong1",
+        "order": 1,
+        "width": "6",
+        "height": "4",
+        "gtype": "gage",
+        "title": "Độ đầy cống L (%)",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 100,
+        "colors": [
+            "#2ecc71",
+            "#f39c12",
+            "#e74c3c"
+        ],
+        "seg1": "50",
+        "seg2": "80",
+        "diff": false,
+        "className": "",
+        "x": 940,
+        "y": 20,
+        "wires": []
+    },
+    {
+        "id": "ui_text_cong1_level",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_cong1",
+        "order": 2,
+        "width": "6",
+        "height": "1",
+        "name": "Mức cảnh báo",
+        "label": "Mức cảnh báo",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 940,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "ui_text_cong1_m",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_cong1",
+        "order": 3,
+        "width": "3",
+        "height": "1",
+        "name": "Mực nước",
+        "label": "Mực nước",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 940,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "ui_text_rise_rate",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_cong1",
+        "order": 4,
+        "width": "3",
+        "height": "1",
+        "name": "Tốc độ dâng",
+        "label": "Tốc độ dâng",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 940,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "ui_text_cong1_online",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_cong1",
+        "order": 5,
+        "width": "6",
+        "height": "1",
+        "name": "Kết nối",
+        "label": "Kết nối",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 600,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "ui_gauge_depth",
+        "type": "ui_gauge",
+        "z": "tab_flood_main",
+        "name": "Độ sâu ngập h (cm)",
+        "group": "ui_group_duong1",
+        "order": 1,
+        "width": "6",
+        "height": "4",
+        "gtype": "gage",
+        "title": "Độ sâu ngập h (cm)",
+        "label": "cm",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 30,
+        "colors": [
+            "#2ecc71",
+            "#f39c12",
+            "#e74c3c"
+        ],
+        "seg1": "10",
+        "seg2": "20",
+        "diff": false,
+        "className": "",
+        "x": 940,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "ui_text_duong1_level",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_duong1",
+        "order": 2,
+        "width": "6",
+        "height": "1",
+        "name": "Đèn tại chỗ",
+        "label": "Đèn tại chỗ",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 940,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "ui_text_buzzer",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_duong1",
+        "order": 3,
+        "width": "3",
+        "height": "1",
+        "name": "Còi",
+        "label": "Còi",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 940,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "ui_text_duong1_online",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_duong1",
+        "order": 4,
+        "width": "3",
+        "height": "1",
+        "name": "Kết nối",
+        "label": "Kết nối",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 600,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "ui_text_combined",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_alert",
+        "order": 1,
+        "width": "12",
+        "height": "1",
+        "name": "Tình trạng chung",
+        "label": "Tình trạng chung",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 1180,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "ui_text_incident",
+        "type": "ui_text",
+        "z": "tab_flood_main",
+        "group": "ui_group_alert",
+        "order": 2,
+        "width": "8",
+        "height": "1",
+        "name": "Yêu cầu vận hành",
+        "label": "Yêu cầu vận hành",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 1180,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "ui_log",
+        "type": "ui_template",
+        "z": "tab_flood_main",
+        "group": "ui_group_alert",
+        "name": "Nhật ký",
+        "order": 4,
+        "width": "12",
+        "height": "6",
+        "format": "<div style=\"height:100%;overflow-y:auto;font-size:13px;line-height:1.5\">\n  <div ng-if=\"!msg.payload.length\" style=\"opacity:.6\">Chưa có sự kiện.</div>\n  <div ng-repeat=\"e in msg.payload\" style=\"padding:3px 0;border-bottom:1px solid rgba(128,128,128,.2)\">\n    <span style=\"opacity:.6;font-family:monospace\">{{e.time}}</span>&nbsp; {{e.text}}\n  </div>\n</div>\n",
+        "storeOutMessages": true,
+        "fwdInMessages": false,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 1380,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ui_devices",
+        "type": "ui_template",
+        "z": "tab_flood_main",
+        "group": "ui_group_devices",
+        "name": "Bảng thiết bị",
+        "order": 1,
+        "width": "12",
+        "height": "5",
+        "format": "<div style=\"overflow-x:auto\">\n<table style=\"width:100%;border-collapse:collapse;font-size:13px\">\n  <tr style=\"text-align:left;border-bottom:2px solid rgba(128,128,128,.4)\">\n    <th>Node</th><th>Loại</th><th>Kết nối</th><th>Mức</th><th>Số đo</th><th>Lần cuối</th>\n    <th>RSSI</th><th>Uptime</th><th>Lỗi đo</th><th>FW</th><th>IP</th>\n  </tr>\n  <tr ng-repeat=\"r in msg.payload\" style=\"border-bottom:1px solid rgba(128,128,128,.2)\">\n    <td><b>{{r.id}}</b></td><td>{{r.kind}}</td><td>{{r.conn}}</td><td>{{r.level}}</td><td>{{r.reading}}</td>\n    <td>{{r.last}}</td><td>{{r.rssi}}</td><td>{{r.uptime}}</td><td>{{r.err}}</td><td>{{r.fw}}</td><td>{{r.ip}}</td>\n  </tr>\n</table>\n<div ng-if=\"!msg.payload.length\" style=\"opacity:.6;padding:6px 0\">Chưa có thiết bị nào gửi dữ liệu.</div>\n<div style=\"font-size:11px;opacity:.6;margin-top:6px\">\n  Thêm node mới: nạp firmware với NODE_ID mới — node tự xuất hiện trong bảng, không cần sửa flow.\n</div>\n</div>\n",
+        "storeOutMessages": true,
+        "fwdInMessages": false,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 580,
+        "y": 980,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ui_chart_cong1",
+        "type": "ui_chart",
+        "z": "tab_flood_main",
+        "name": "Cống 1: mực nước (cm) & độ đầy (%)",
+        "group": "ui_group_chart",
+        "order": 1,
+        "width": "6",
+        "height": "4",
+        "label": "Cống 1: mực nước (cm) & độ đầy (%)",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Chờ dữ liệu…",
+        "dot": false,
+        "ymin": "0",
+        "ymax": "100",
+        "removeOlder": "1",
+        "removeOlderUnit": "3600",
+        "removeOlderPoints": "",
+        "colors": [
+            "#1f77b4",
+            "#ff7f0e",
+            "#2ca02c"
+        ],
+        "useOneColor": false,
+        "useUTC": false,
+        "outputs": 1,
+        "x": 940,
+        "y": 1000,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ui_chart_duong1",
+        "type": "ui_chart",
+        "z": "tab_flood_main",
+        "name": "Đường 1: độ sâu ngập (cm)",
+        "group": "ui_group_chart",
+        "order": 2,
+        "width": "6",
+        "height": "4",
+        "label": "Đường 1: độ sâu ngập (cm)",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Chờ dữ liệu…",
+        "dot": false,
+        "ymin": "0",
+        "ymax": "30",
+        "removeOlder": "1",
+        "removeOlderUnit": "3600",
+        "removeOlderPoints": "",
+        "colors": [
+            "#2980b9",
+            "#e74c3c",
+            "#f39c12"
+        ],
+        "useOneColor": false,
+        "useUTC": false,
+        "outputs": 1,
+        "x": 940,
+        "y": 1040,
+        "wires": [
+            []
+        ]
+    }
 ]
