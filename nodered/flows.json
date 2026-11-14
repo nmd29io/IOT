@@ -1,0 +1,987 @@
+[
+  {
+    "id": "tab_flood_main",
+    "type": "tab",
+    "label": "Flood Monitor Main",
+    "disabled": false,
+    "info": "Urban Flood Monitoring & Alert System — main flow"
+  },
+  {
+    "id": "tab_dashboard",
+    "type": "tab",
+    "label": "Dashboard Config",
+    "disabled": false,
+    "info": "Dashboard UI configuration nodes"
+  },
+  {
+    "id": "ui_group_cong1",
+    "type": "ui_group",
+    "name": "Cống 1 — Mực Nước",
+    "tab": "ui_tab_flood",
+    "order": 1,
+    "disp": true,
+    "width": "6",
+    "collapse": false
+  },
+  {
+    "id": "ui_group_duong1",
+    "type": "ui_group",
+    "name": "Đường 1 — Ngập Mặt Đường",
+    "tab": "ui_tab_flood",
+    "order": 2,
+    "disp": true,
+    "width": "6",
+    "collapse": false
+  },
+  {
+    "id": "ui_group_alert",
+    "type": "ui_group",
+    "name": "Cảnh Báo Tổng Hợp",
+    "tab": "ui_tab_flood",
+    "order": 4,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "ui_group_chart",
+    "type": "ui_group",
+    "name": "Lịch Sử Dữ Liệu",
+    "tab": "ui_tab_flood",
+    "order": 5,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "ui_tab_flood",
+    "type": "ui_tab",
+    "name": "Flood Monitor",
+    "icon": "dashboard",
+    "order": 1,
+    "disp": true
+  },
+  {
+    "id": "mqtt_in_cong1_level",
+    "type": "mqtt in",
+    "z": "tab_flood_main",
+    "name": "cong1/level",
+    "topic": "flood/cong1/level",
+    "qos": "1",
+    "datatype": "json",
+    "broker": "mqtt_broker_config",
+    "x": 120,
+    "y": 80,
+    "wires": [
+      [
+        "fn_parse_cong1"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_in_cong1_online",
+    "type": "mqtt in",
+    "z": "tab_flood_main",
+    "name": "cong1/online",
+    "topic": "flood/cong1/online",
+    "qos": "1",
+    "datatype": "utf8",
+    "broker": "mqtt_broker_config",
+    "x": 120,
+    "y": 140,
+    "wires": [
+      [
+        "fn_online_cong1"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_in_duong1_depth",
+    "type": "mqtt in",
+    "z": "tab_flood_main",
+    "name": "duong1/depth",
+    "topic": "flood/duong1/depth",
+    "qos": "1",
+    "datatype": "json",
+    "broker": "mqtt_broker_config",
+    "x": 120,
+    "y": 320,
+    "wires": [
+      [
+        "fn_parse_duong1"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_in_duong1_online",
+    "type": "mqtt in",
+    "z": "tab_flood_main",
+    "name": "duong1/online",
+    "topic": "flood/duong1/online",
+    "qos": "1",
+    "datatype": "utf8",
+    "broker": "mqtt_broker_config",
+    "x": 120,
+    "y": 380,
+    "wires": [
+      [
+        "fn_online_duong1"
+      ]
+    ]
+  },
+  {
+    "id": "fn_parse_cong1",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Parse & Rise Rate cong1",
+    "func": "// ── Validate payload ────────────────────────────────────────────────────\nvar p = msg.payload;\nif (typeof p !== 'object' || p === null) {\n    node.warn('cong1: invalid payload');\n    return null;\n}\n\nvar levelCm  = parseFloat(p.level_cm) || 0;\nlevelCm = Math.max(0, Math.min(180, levelCm));\nvar fillPct  = parseFloat(p.fill_pct) || ((levelCm / 180.0) * 100);\nfillPct = Math.max(0, Math.min(100, fillPct));\nvar status   = p.status || 'green';\n\n// ── Rate calculation with anti-spike protection ────────────────────────\nvar now = Date.now();\nvar prev = context.get('prev') || { level: levelCm, time: now, rate: 0.0 };\nvar dtSec = (now - prev.time) / 1000.0;\n\nvar calcRate = prev.rate;\nif (dtSec >= 2.0) {\n    var dtMin = dtSec / 60.0;\n    calcRate = (levelCm - prev.level) / dtMin;\n    calcRate = Math.max(-25.0, Math.min(25.0, calcRate));\n    calcRate = Math.round(calcRate * 10) / 10;\n    context.set('prev', { level: levelCm, time: now, rate: calcRate });\n} else if (p.rise_rate !== undefined && !isNaN(parseFloat(p.rise_rate))) {\n    calcRate = Math.max(-25.0, Math.min(25.0, parseFloat(p.rise_rate)));\n    calcRate = Math.round(calcRate * 10) / 10;\n}\n\n// ── Store for downstream nodes & flow context ──────────────────────────\nflow.set('cong1_level',   levelCm);\nflow.set('cong1_fill',    fillPct);\nflow.set('cong1_rate',    calcRate);\nflow.set('cong1_status',  status);\n\n// ── Build enriched payload ───────────────────────────────────────────────\nmsg.payload = {\n    level_cm : Math.round(levelCm * 10) / 10,\n    fill_pct : Math.round(fillPct * 10) / 10,\n    rise_rate: calcRate,\n    status   : status,\n    timestamp: now\n};\n\nreturn msg;\n",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "x": 360,
+    "y": 80,
+    "wires": [
+      [
+        "fn_hysteresis_cong1",
+        "debug_cong1"
+      ]
+    ]
+  },
+  {
+    "id": "fn_hysteresis_cong1",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Hysteresis Alert cong1",
+    "func": "var p       = msg.payload;\nvar levelCm = parseFloat(p.level_cm) || 0;\nvar fillPct = parseFloat(p.fill_pct) || 0;\nvar rate    = parseFloat(p.rise_rate) || 0;\n\n// State: 0=green, 1=yellow, 2=red\nvar state   = flow.get('cong1_alert_state') || 0;\n\n// Rate override → RED immediately if rapid rise > 5 cm/min\nif (rate > 5) {\n    state = 2;\n} else {\n    switch (state) {\n        case 0: // GREEN\n            if (fillPct >= 60) state = 1;\n            break;\n        case 1: // YELLOW\n            if      (fillPct < 50) state = 0;\n            else if (fillPct >= 80) state = 2;\n            break;\n        case 2: // RED\n            if (fillPct < 70) state = 1;\n            break;\n    }\n}\n\nflow.set('cong1_alert_state', state);\n\nvar stateStr   = ['green','yellow','red'][state];\nvar stateVN    = ['AN TOÀN','CẢNH BÁO','NGUY HIỂM'][state];\nvar stateColor = ['#2ecc71','#f39c12','#e74c3c'][state];\n\np.alert_state  = state;\np.status       = stateStr;\np.status_vn    = stateVN;\np.state_color  = stateColor;\n\nflow.set('cong1_status', stateStr);\n\n// Output 1: Object for backend decisions & ThingSpeak\nvar msgData = { payload: p };\n\n// Output 2: Pure number float for Gauge Fill %\nvar msgGauge = { payload: Math.round(fillPct * 10) / 10 };\n\n// Output 3: Status string for UI text\nvar msgStatus = { payload: stateVN };\n\n// Output 4: Rate string for UI text\nvar rateStr = (rate >= 0 ? '+' : '') + rate.toFixed(1) + ' cm/phút';\nvar msgRate = { payload: rateStr };\n\n// Output 5: Data points for History Chart\nvar msgChartLevel = { topic: 'Mực nước (cm)', payload: Math.round(levelCm * 10) / 10 };\nvar msgChartFill  = { topic: 'Độ đầy (%)', payload: Math.round(fillPct * 10) / 10 };\n\nreturn [msgData, msgGauge, msgStatus, msgRate, [msgChartLevel, msgChartFill]];\n",
+    "outputs": 5,
+    "noerr": 0,
+    "x": 620,
+    "y": 80,
+    "wires": [
+      [
+        "fn_combined_alert",
+        "fn_thingspeak_cong1"
+      ],
+      [
+        "ui_gauge_fill"
+      ],
+      [
+        "ui_text_cong1_status"
+      ],
+      [
+        "ui_text_rise_rate"
+      ],
+      [
+        "ui_chart_cong1"
+      ]
+    ]
+  },
+  {
+    "id": "fn_parse_duong1",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Parse duong1",
+    "func": "var p = msg.payload;\nif (typeof p !== 'object' || p === null) {\n    node.warn('duong1: invalid payload');\n    return null;\n}\n\nvar depthCm = parseFloat(p.depth_cm) || 0;\ndepthCm = Math.max(0, Math.min(100, depthCm));\nvar status  = p.status || 'green';\n\nflow.set('duong1_depth',  depthCm);\nflow.set('duong1_status', status);\n\nmsg.payload = {\n    depth_cm : Math.round(depthCm * 10) / 10,\n    status   : status,\n    timestamp: Date.now()\n};\n\nreturn msg;\n",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 360,
+    "y": 320,
+    "wires": [
+      [
+        "fn_hysteresis_duong1",
+        "debug_duong1"
+      ]
+    ]
+  },
+  {
+    "id": "fn_hysteresis_duong1",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Hysteresis Alert duong1",
+    "func": "var p     = msg.payload;\nvar depth = parseFloat(p.depth_cm) || 0;\n\nvar state = flow.get('duong1_alert_state') || 0;\n\nswitch (state) {\n    case 0: // GREEN\n        if (depth >= 5)  state = 1;\n        break;\n    case 1: // YELLOW\n        if      (depth < 3)  state = 0;\n        else if (depth >= 15) state = 2;\n        break;\n    case 2: // RED\n        if (depth < 10) state = 1;\n        break;\n}\n\nflow.set('duong1_alert_state', state);\n\nvar stateStr   = ['green','yellow','red'][state];\nvar stateVN    = ['AN TOÀN','CẢNH BÁO','NGẬP'][state];\nvar stateColor = ['#2ecc71','#f39c12','#e74c3c'][state];\n\np.alert_state = state;\np.status      = stateStr;\np.status_vn   = stateVN;\np.state_color = stateColor;\n\nflow.set('duong1_status', stateStr);\n\n// Output 1: Object for combined alert & ThingSpeak\nvar msgData = { payload: p };\n\n// Output 2: Pure number float for Gauge Depth cm\nvar msgGauge = { payload: Math.round(depth * 10) / 10 };\n\n// Output 3: Status string for UI text\nvar msgStatus = { payload: stateVN };\n\n// Output 4: Data point for History Chart\nvar msgChart = { topic: 'Độ sâu ngập (cm)', payload: Math.round(depth * 10) / 10 };\n\nreturn [msgData, msgGauge, msgStatus, msgChart];\n",
+    "outputs": 4,
+    "noerr": 0,
+    "x": 620,
+    "y": 320,
+    "wires": [
+      [
+        "fn_combined_alert",
+        "fn_thingspeak_duong1"
+      ],
+      [
+        "ui_gauge_depth"
+      ],
+      [
+        "ui_text_duong1_status"
+      ],
+      [
+        "ui_chart_duong1"
+      ]
+    ]
+  },
+  {
+    "id": "fn_combined_alert",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Combined Alert Decision",
+    "func": "var cong1Status  = flow.get('cong1_status')  || 'green';\nvar duong1Status = flow.get('duong1_status') || 'green';\nvar fillPct  = flow.get('cong1_fill')   || 0;\nvar riseRate = flow.get('cong1_rate')   || 0;\nvar depthCm  = flow.get('duong1_depth') || 0;\n\nvar combinedLevel = 0; // 0=ok, 1=warning, 2=danger, 3=critical\nvar combinedText  = '';\nvar combinedColor = '#2ecc71';\nvar telegramMsg   = null;\n\nif (cong1Status === 'red' && duong1Status === 'red') {\n    combinedLevel = 3;\n    combinedText  = '🆘 NGẬP NGHIÊM TRỌNG';\n    combinedColor = '#8e44ad';\n    telegramMsg   = '🆘 NGẬP NGHIÊM TRỌNG: Cống tràn + mặt đường ngập ' + depthCm + ' cm. KHẨN CẤP!';\n} else if (duong1Status === 'red') {\n    combinedLevel = 2;\n    combinedText  = '🌊 NGẬP ĐƯỜNG';\n    combinedColor = '#e74c3c';\n    telegramMsg   = '🌊 NGẬP ĐƯỜNG: Độ sâu ngập ' + depthCm + ' cm. Yêu cầu điều tiết giao thông và bơm nước!';\n} else if (cong1Status === 'red') {\n    combinedLevel = 2;\n    combinedText  = '🚨 NGUY HIỂM: CỐNG SẮP TRÀN';\n    combinedColor = '#e74c3c';\n    telegramMsg   = '🚨 NGUY HIỂM: Cống sắp tràn! Mực nước ' + fillPct + '%, dâng ' + riseRate + ' cm/phút. Yêu cầu bật bơm/mở van ngay!';\n} else if (cong1Status === 'yellow' || duong1Status === 'yellow') {\n    combinedLevel = 1;\n    combinedText  = '⚠️ CẢNH BÁO';\n    combinedColor = '#f39c12';\n    if (cong1Status === 'yellow') {\n        telegramMsg = '⚠️ CẢNH BÁO: Mực nước trong cống đạt ' + fillPct + '%, tốc độ dâng ' + riseRate + ' cm/phút. Đề nghị theo dõi.';\n    }\n} else {\n    combinedText  = '✅ AN TOÀN';\n    combinedColor = '#2ecc71';\n}\n\n// Telegram rate limiting — only send on state change\nvar prevCombined = flow.get('prev_combined_level');\nvar shouldTelegram = (telegramMsg !== null) &&\n                     (combinedLevel !== prevCombined) &&\n                     (combinedLevel >= 1);\nflow.set('prev_combined_level', combinedLevel);\n\nvar outMsg = {\n    payload: {\n        combined_level : combinedLevel,\n        combined_text  : combinedText,\n        combined_color : combinedColor,\n        cong1_status   : cong1Status,\n        duong1_status  : duong1Status,\n        fill_pct       : fillPct,\n        rise_rate      : riseRate,\n        depth_cm       : depthCm,\n        timestamp      : Date.now()\n    }\n};\n\nvar telegramOut = shouldTelegram ? { payload: { chatId: global.get('telegram_chat_id') || 0, type: 'message', content: telegramMsg } } : null;\n\nreturn [outMsg, telegramOut];",
+    "outputs": 2,
+    "noerr": 0,
+    "x": 920,
+    "y": 200,
+    "wires": [
+      [
+        "ui_text_combined",
+        "debug_combined"
+      ],
+      [
+        "fn_telegram_format"
+      ]
+    ]
+  },
+  {
+    "id": "fn_telegram_format",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Format Telegram Message",
+    "func": "if (!msg || !msg.payload) return null;\n\n// msg.payload is already { chatId, type, content } from combined alert\nvar chatId = msg.payload.chatId;\nif (!chatId || chatId === 0) {\n    node.warn('Telegram chatId not set. Set global.telegram_chat_id.');\n    return null;\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 1180,
+    "y": 160,
+    "wires": [
+      [
+        "telegram_sender"
+      ]
+    ]
+  },
+  {
+    "id": "telegram_sender",
+    "type": "telegram sender",
+    "z": "tab_flood_main",
+    "name": "Send Telegram Alert",
+    "bot": "telegram_bot_config",
+    "x": 1420,
+    "y": 160,
+    "wires": [
+      [
+        "debug_telegram"
+      ]
+    ]
+  },
+  {
+    "id": "fn_thingspeak_cong1",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Format ThingSpeak (cong1)",
+    "func": "var p     = msg.payload;\nvar apiKey= global.get('thingspeak_write_key') || 'YOUR_API_KEY';\nvar state = p.alert_state || 0;\n\nmsg.url    = 'https://api.thingspeak.com/update';\nmsg.method = 'POST';\nmsg.headers= { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload= 'api_key=' + apiKey +\n             '&field1=' + (p.level_cm  || 0) +\n             '&field2=' + (p.fill_pct  || 0) +\n             '&field3=' + (p.rise_rate || 0) +\n             '&field5=' + state;\n\n// Mark as cong1 source so the merge node knows\nmsg._source = 'cong1';\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 920,
+    "y": 80,
+    "wires": [
+      [
+        "fn_thingspeak_merge"
+      ]
+    ]
+  },
+  {
+    "id": "fn_thingspeak_duong1",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Format ThingSpeak (duong1)",
+    "func": "var p     = msg.payload;\nvar apiKey= global.get('thingspeak_write_key') || 'YOUR_API_KEY';\nvar state = p.alert_state || 0;\n\nmsg.url    = 'https://api.thingspeak.com/update';\nmsg.method = 'POST';\nmsg.headers= { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload= 'api_key=' + apiKey +\n             '&field4=' + (p.depth_cm || 0) +\n             '&field6=' + state;\n\nmsg._source = 'duong1';\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 920,
+    "y": 320,
+    "wires": [
+      [
+        "fn_thingspeak_merge"
+      ]
+    ]
+  },
+  {
+    "id": "fn_thingspeak_merge",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "ThingSpeak Rate Limit (15s)",
+    "func": "// ThingSpeak free tier: max 1 update per 15 seconds\nvar lastSend = context.get('lastSend') || 0;\nvar now = Date.now();\nif (now - lastSend < 15000) {\n    // Store pending but skip sending\n    context.set('pending', msg);\n    return null;\n}\ncontext.set('lastSend', now);\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 1180,
+    "y": 200,
+    "wires": [
+      [
+        "http_thingspeak"
+      ]
+    ]
+  },
+  {
+    "id": "http_thingspeak",
+    "type": "http request",
+    "z": "tab_flood_main",
+    "name": "POST ThingSpeak",
+    "method": "use",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "tls_thingspeak",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "x": 1420,
+    "y": 200,
+    "wires": [
+      [
+        "debug_thingspeak"
+      ]
+    ]
+  },
+  {
+    "id": "fn_online_cong1",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Online Status cong1",
+    "func": "var status = msg.payload === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE';\nmsg.payload = status;\nflow.set('cong1_online', msg.payload);\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 360,
+    "y": 140,
+    "wires": [
+      [
+        "ui_text_cong1_online"
+      ]
+    ]
+  },
+  {
+    "id": "fn_online_duong1",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Online Status duong1",
+    "func": "var status = msg.payload === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE';\nmsg.payload = status;\nflow.set('duong1_online', msg.payload);\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 360,
+    "y": 380,
+    "wires": [
+      [
+        "ui_text_duong1_online"
+      ]
+    ]
+  },
+  {
+    "id": "ui_btn_silence_buzzer",
+    "type": "ui_button",
+    "z": "tab_flood_main",
+    "name": "Tắt Còi Báo Động",
+    "group": "ui_group_duong1",
+    "order": 6,
+    "width": "6",
+    "height": "1",
+    "passthru": false,
+    "label": "🔇 Tắt Còi",
+    "tooltip": "Gửi lệnh tắt buzzer đến node duong1",
+    "color": "white",
+    "bgcolor": "#c0392b",
+    "icon": "",
+    "payload": "off",
+    "payloadType": "str",
+    "topic": "flood/duong1/buzzer",
+    "topicType": "str",
+    "x": 360,
+    "y": 500,
+    "wires": [
+      [
+        "mqtt_out_buzzer"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out_buzzer",
+    "type": "mqtt out",
+    "z": "tab_flood_main",
+    "name": "duong1/buzzer",
+    "topic": "flood/duong1/buzzer",
+    "qos": "1",
+    "retain": "false",
+    "broker": "mqtt_broker_config",
+    "x": 620,
+    "y": 500,
+    "wires": []
+  },
+  {
+    "id": "ui_gauge_fill",
+    "type": "ui_gauge",
+    "z": "tab_flood_main",
+    "name": "Gauge Fill %",
+    "group": "ui_group_cong1",
+    "order": 1,
+    "width": "6",
+    "height": "4",
+    "gtype": "gage",
+    "title": "Độ Đầy Cống (%)",
+    "label": "%",
+    "format": "{{value}}%",
+    "min": "0",
+    "max": "100",
+    "colors": [
+      "#2ecc71",
+      "#f39c12",
+      "#e74c3c"
+    ],
+    "seg1": "60",
+    "seg2": "80",
+    "x": 920,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "ui_gauge_depth",
+    "type": "ui_gauge",
+    "z": "tab_flood_main",
+    "name": "Gauge Depth cm",
+    "group": "ui_group_duong1",
+    "order": 1,
+    "width": "6",
+    "height": "4",
+    "gtype": "gage",
+    "title": "Độ Sâu Ngập (cm)",
+    "label": "cm",
+    "format": "{{value}} cm",
+    "min": "0",
+    "max": "50",
+    "colors": [
+      "#2ecc71",
+      "#f39c12",
+      "#e74c3c"
+    ],
+    "seg1": "5",
+    "seg2": "15",
+    "x": 920,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "ui_text_cong1_status",
+    "type": "ui_text",
+    "z": "tab_flood_main",
+    "group": "ui_group_cong1",
+    "order": 2,
+    "width": "3",
+    "height": "1",
+    "name": "Trạng Thái Cống",
+    "label": "Trạng thái:",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 920,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "ui_text_rise_rate",
+    "type": "ui_text",
+    "z": "tab_flood_main",
+    "group": "ui_group_cong1",
+    "order": 3,
+    "width": "3",
+    "height": "1",
+    "name": "Tốc Độ Dâng",
+    "label": "Tốc độ dâng:",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 920,
+    "y": 140,
+    "wires": []
+  },
+  {
+    "id": "ui_text_cong1_online",
+    "type": "ui_text",
+    "z": "tab_flood_main",
+    "group": "ui_group_cong1",
+    "order": 4,
+    "width": "3",
+    "height": "1",
+    "name": "Online cong1",
+    "label": "Kết nối:",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 620,
+    "y": 140,
+    "wires": []
+  },
+  {
+    "id": "ui_text_duong1_status",
+    "type": "ui_text",
+    "z": "tab_flood_main",
+    "group": "ui_group_duong1",
+    "order": 2,
+    "width": "3",
+    "height": "1",
+    "name": "Trạng Thái Đường",
+    "label": "Trạng thái:",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 920,
+    "y": 400,
+    "wires": []
+  },
+  {
+    "id": "ui_text_duong1_online",
+    "type": "ui_text",
+    "z": "tab_flood_main",
+    "group": "ui_group_duong1",
+    "order": 3,
+    "width": "3",
+    "height": "1",
+    "name": "Online duong1",
+    "label": "Kết nối:",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 620,
+    "y": 380,
+    "wires": []
+  },
+  {
+    "id": "ui_text_combined",
+    "type": "ui_text",
+    "z": "tab_flood_main",
+    "group": "ui_group_alert",
+    "order": 1,
+    "width": "12",
+    "height": "2",
+    "name": "Cảnh Báo Tổng Hợp",
+    "label": "",
+    "format": "<span style='font-size:1.4em; font-weight:bold; color:{{msg.payload.combined_color}}'>{{msg.payload.combined_text}}</span><br/><small>Cống: {{msg.payload.fill_pct}}% | Dâng: {{msg.payload.rise_rate}} cm/ph | Đường: {{msg.payload.depth_cm}} cm</small>",
+    "layout": "row-center",
+    "x": 1180,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "ui_chart_cong1",
+    "type": "ui_chart",
+    "z": "tab_flood_main",
+    "name": "Chart cong1",
+    "group": "ui_group_chart",
+    "order": 1,
+    "width": "6",
+    "height": "4",
+    "label": "Mực Nước Cống (cm & %)",
+    "chartType": "line",
+    "legend": "true",
+    "xformat": "HH:mm:ss",
+    "interpolate": "linear",
+    "nodata": "Chờ dữ liệu…",
+    "dot": false,
+    "ymin": "0",
+    "ymax": "180",
+    "removeOlder": "1",
+    "removeOlderUnit": "3600",
+    "removeOlderPoints": "100",
+    "colors": [
+      "#1abc9c",
+      "#3498db",
+      "#e74c3c",
+      "#9b59b6",
+      "#f39c12",
+      "#1abc9c",
+      "#1abc9c"
+    ],
+    "useOneColor": false,
+    "useUTC": false,
+    "inputs": 1,
+    "x": 920,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "ui_chart_duong1",
+    "type": "ui_chart",
+    "z": "tab_flood_main",
+    "name": "Chart duong1",
+    "group": "ui_group_chart",
+    "order": 2,
+    "width": "6",
+    "height": "4",
+    "label": "Độ Sâu Ngập Đường (cm)",
+    "chartType": "line",
+    "legend": "true",
+    "xformat": "HH:mm:ss",
+    "interpolate": "linear",
+    "nodata": "Chờ dữ liệu…",
+    "dot": false,
+    "ymin": "0",
+    "ymax": "50",
+    "removeOlder": "1",
+    "removeOlderUnit": "3600",
+    "removeOlderPoints": "100",
+    "colors": [
+      "#2980b9",
+      "#e74c3c",
+      "#f39c12"
+    ],
+    "useOneColor": false,
+    "useUTC": false,
+    "inputs": 1,
+    "x": 920,
+    "y": 420,
+    "wires": []
+  },
+  {
+    "id": "debug_cong1",
+    "type": "debug",
+    "z": "tab_flood_main",
+    "name": "Debug cong1",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "payload.fill_pct",
+    "statusType": "auto",
+    "x": 620,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "debug_duong1",
+    "type": "debug",
+    "z": "tab_flood_main",
+    "name": "Debug duong1",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "payload.depth_cm",
+    "statusType": "auto",
+    "x": 620,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "debug_combined",
+    "type": "debug",
+    "z": "tab_flood_main",
+    "name": "Debug Combined",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 1180,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "debug_telegram",
+    "type": "debug",
+    "z": "tab_flood_main",
+    "name": "Debug Telegram",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 1420,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "debug_thingspeak",
+    "type": "debug",
+    "z": "tab_flood_main",
+    "name": "Debug ThingSpeak",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 1420,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "inject_init_globals",
+    "type": "inject",
+    "z": "tab_flood_main",
+    "name": "Init Global Variables",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "1",
+    "topic": "",
+    "payload": "init",
+    "payloadType": "str",
+    "x": 120,
+    "y": 560,
+    "wires": [
+      [
+        "fn_init_globals"
+      ]
+    ]
+  },
+  {
+    "id": "fn_init_globals",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Set Global Credentials",
+    "func": "// ─── Set credentials or get from environment ──────────────\nglobal.set('telegram_chat_id',    env.get('TELEGRAM_CHAT_ID')    || 0);\nglobal.set('thingspeak_write_key', env.get('THINGSPEAK_WRITE_API_KEY') || 'YOUR_KEY');\n\nnode.status({ fill:'green', shape:'dot', text:'Globals initialised' });\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 360,
+    "y": 560,
+    "wires": []
+  },
+  {
+    "id": "mqtt_broker_config",
+    "type": "mqtt-broker",
+    "name": "Flood MQTT Broker",
+    "broker": "localhost",
+    "port": "1883",
+    "clientid": "nodered_flood_monitor",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "willMsg": {},
+    "sessionExpiry": ""
+  },
+  {
+    "id": "telegram_bot_config",
+    "type": "telegram bot",
+    "usernames": [],
+    "chatids": [],
+    "name": "FloodAlertBot",
+    "token": "",
+    "updatemode": "polling",
+    "pollinterval": "300",
+    "usesocks": false,
+    "sockshost": "",
+    "socksprotocol": "socks5",
+    "socksport": "6667",
+    "socksusername": "",
+    "sockspassword": "",
+    "botname": "FloodAlertBot",
+    "userInfo": false,
+    "parsemode": "Markdown",
+    "protected": false
+  },
+  {
+    "id": "tls_thingspeak",
+    "type": "tls-config",
+    "name": "ThingSpeak TLS",
+    "cert": "",
+    "key": "",
+    "ca": "",
+    "certname": "",
+    "keyname": "",
+    "caname": "",
+    "servername": "",
+    "verifyservercert": false
+  },
+  {
+    "id": "ui_group_ai",
+    "type": "ui_group",
+    "name": "🤖 Dự Báo AI Đa Tầng Thời Gian (5m - 15m - 30m - 60m)",
+    "tab": "ui_tab_flood",
+    "order": 3,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "mqtt_in_ai_pred",
+    "type": "mqtt in",
+    "z": "tab_flood_main",
+    "name": "ai/prediction",
+    "topic": "flood/ai/prediction",
+    "qos": "1",
+    "datatype": "json",
+    "broker": "mqtt_broker_config",
+    "x": 120,
+    "y": 480,
+    "wires": [
+      [
+        "fn_process_ai"
+      ]
+    ]
+  },
+  {
+    "id": "fn_process_ai",
+    "type": "function",
+    "z": "tab_flood_main",
+    "name": "Process Multi-Horizon AI",
+    "func": "var p = msg.payload;\nif (!p) return null;\n\n// Output 1: Gauge dự báo mực nước 5m (pure number)\nvar msgGauge5m = {\n    payload: p.predicted_level_5m,\n    topic: 'Dự báo +5m'\n};\n\n// Output 2: Gauge xác suất ngập 30m (%) (pure number)\nvar msgGauge30m = {\n    payload: p.prob_flood_30m,\n    topic: 'Xác suất ngập +30m (%)'\n};\n\n// Output 3: Trạng thái đa tầng (Object for UI Template)\nvar msgStatus = {\n    payload: {\n        status_color: p.status_color || '#2ecc71',\n        predicted_status: p.predicted_status || 'AN TOÀN',\n        predicted_fill_5m: p.predicted_fill_5m || 0,\n        status_30m_color: p.status_30m_color || '#2ecc71',\n        status_30m: p.status_30m || 'AN TOÀN THOÁT NƯỚC',\n        prob_flood_30m: p.prob_flood_30m || 0,\n        current_level: p.current_level || 0,\n        predicted_level_15m: p.predicted_level_15m || 0,\n        predicted_level_30m: p.predicted_level_30m || 0,\n        predicted_level_60m: p.predicted_level_60m || 0\n    }\n};\n\n// Output 4: Khuyến nghị điều phối giao thông (Object for UI Template)\nvar warnColor = p.early_warning ? '#e74c3c' : (p.prob_flood_30m >= 50 ? '#f39c12' : '#2ecc71');\nvar msgTraffic = {\n    payload: {\n        traffic_color: warnColor,\n        traffic_advisory: p.traffic_advisory || 'Lưu lượng thoát ổn định.'\n    }\n};\n\n// Output 5: Biểu đồ đa đường (Actual, +5m, +30m, +60m)\nvar msgChartActual = { topic: '1. Mực nước thực tế (cm)', payload: p.current_level };\nvar msgChart5m     = { topic: '2. Dự báo AI +5m (cm)',   payload: p.predicted_level_5m };\nvar msgChart30m    = { topic: '3. Dự báo AI +30m (cm)',  payload: p.predicted_level_30m };\nvar msgChart60m    = { topic: '4. Dự báo AI +60m (cm)',  payload: p.predicted_level_60m };\n\n// Output 6: Telegram early warning alert\nvar msgTg = null;\nif (p.early_warning) {\n    var lastAlert = flow.get('last_ai_alert_time') || 0;\n    var now = Date.now();\n    if (now - lastAlert > 180000) {\n        flow.set('last_ai_alert_time', now);\n        var tgChatId = global.get('telegram_chat_id');\n        msgTg = {\n            payload: {\n                chatId: tgChatId,\n                type: 'message',\n                content: '🚨 *CẢNH BÁO SỚM ĐIỀU PHỐI GIAO THÔNG (AI MULTI-HORIZON)*\\n\\n' +\n                         '📍 *Vị trí:* Cống 1 & Điểm trũng mặt đường\\n' +\n                         '🌊 *Mực nước hiện tại:* ' + p.current_level + ' cm (' + p.current_fill + '%)\\n' +\n                         '🔮 *Dự báo +5 phút:* ' + p.predicted_level_5m + ' cm\\n' +\n                         '🔮 *Dự báo +30 phút:* ' + p.predicted_level_30m + ' cm (*Xác suất ngập: ' + p.prob_flood_30m + '%*)\\n' +\n                         '🔮 *Dự báo +60 phút:* ' + p.predicted_level_60m + ' cm\\n\\n' +\n                         '📢 *Khuyến nghị:* ' + p.traffic_advisory + '\\n\\n' +\n                         '_(Tích hợp Radar Nowcasting & Cảm biến IoT UET)_'\n            }\n        };\n    }\n}\n\nreturn [msgGauge5m, msgGauge30m, msgStatus, msgTraffic, [msgChartActual, msgChart5m, msgChart30m, msgChart60m], msgTg];\n",
+    "outputs": 6,
+    "noerr": 0,
+    "x": 360,
+    "y": 480,
+    "wires": [
+      [
+        "ui_gauge_ai_5m"
+      ],
+      [
+        "ui_gauge_ai_30m"
+      ],
+      [
+        "ui_text_ai_status"
+      ],
+      [
+        "ui_text_traffic_advisory"
+      ],
+      [
+        "ui_chart_ai_compare"
+      ],
+      [
+        "telegram_sender"
+      ]
+    ]
+  },
+  {
+    "id": "ui_gauge_ai_5m",
+    "type": "ui_gauge",
+    "z": "tab_flood_main",
+    "name": "Dự báo sau 5 phút",
+    "group": "ui_group_ai",
+    "order": 1,
+    "width": "3",
+    "height": "4",
+    "gtype": "gage",
+    "title": "Dự Báo +5 Phút (Tại Chỗ)",
+    "label": "cm",
+    "format": "{{value}}",
+    "min": 0,
+    "max": 180,
+    "colors": [
+      "#2ecc71",
+      "#f39c12",
+      "#e74c3c"
+    ],
+    "seg1": "90",
+    "seg2": "144",
+    "x": 640,
+    "y": 420,
+    "wires": []
+  },
+  {
+    "id": "ui_gauge_ai_30m",
+    "type": "ui_gauge",
+    "z": "tab_flood_main",
+    "name": "Nguy cơ ngập sau 30 phút",
+    "group": "ui_group_ai",
+    "order": 2,
+    "width": "3",
+    "height": "4",
+    "gtype": "gage",
+    "title": "Nguy Cơ Ngập +30m (Giao Thông)",
+    "label": "%",
+    "format": "{{value}}%",
+    "min": 0,
+    "max": 100,
+    "colors": [
+      "#2ecc71",
+      "#f39c12",
+      "#e74c3c"
+    ],
+    "seg1": "50",
+    "seg2": "75",
+    "x": 640,
+    "y": 460,
+    "wires": []
+  },
+  {
+    "id": "ui_text_ai_status",
+    "type": "ui_template",
+    "z": "tab_flood_main",
+    "group": "ui_group_ai",
+    "order": 3,
+    "width": "6",
+    "height": "4",
+    "name": "Trạng Thái Đa Tầng AI",
+    "label": "Trạng Thái Đa Tầng Thời Gian:",
+    "format": "<div style=\"display:flex; flex-direction:column; justify-content:center; height:100%; font-size:13px; line-height:1.7; padding:4px;\"><div style=\"margin-bottom:6px;\"><b>Mốc +5m:</b> <span style=\"display:inline-block; padding:2px 10px; border-radius:12px; color:#fff; font-weight:bold; background:{{msg.payload.status_color}};\">{{msg.payload.predicted_status}} ({{msg.payload.predicted_fill_5m}}%)</span></div><div style=\"margin-bottom:6px;\"><b>Mốc +30m:</b> <span style=\"display:inline-block; padding:2px 10px; border-radius:12px; color:#fff; font-weight:bold; background:{{msg.payload.status_30m_color}};\">{{msg.payload.status_30m}} ({{msg.payload.prob_flood_30m}}%)</span></div><div style=\"color:#555;\"><b>Mực nước:</b> Hiện tại: <b>{{msg.payload.current_level}}cm</b> | +15m: <b>{{msg.payload.predicted_level_15m}}cm</b> | +30m: <b>{{msg.payload.predicted_level_30m}}cm</b> | +60m: <b>{{msg.payload.predicted_level_60m}}cm</b></div></div>",
+    "layout": "row-spread",
+    "x": 640,
+    "y": 500,
+    "wires": [],
+    "templateScope": "local"
+  },
+  {
+    "id": "ui_text_traffic_advisory",
+    "type": "ui_template",
+    "z": "tab_flood_main",
+    "group": "ui_group_ai",
+    "order": 4,
+    "width": "12",
+    "height": "2",
+    "name": "Khuyến Nghị Điều Phối Giao Thông",
+    "label": "Điều Phối Giao Thông & Vận Hành Hạ Tầng:",
+    "format": "<div style=\"display:flex; align-items:center; height:100%; padding:8px 14px; border-left:5px solid {{msg.payload.traffic_color}}; background:#f8f9fa; font-weight:600; color:{{msg.payload.traffic_color}}; font-size:14px; border-radius:4px;\">🚦 {{msg.payload.traffic_advisory}}</div>",
+    "layout": "row-spread",
+    "x": 640,
+    "y": 540,
+    "wires": [],
+    "templateScope": "local"
+  },
+  {
+    "id": "ui_chart_ai_compare",
+    "type": "ui_chart",
+    "z": "tab_flood_main",
+    "group": "ui_group_ai",
+    "order": 5,
+    "width": "12",
+    "height": "5",
+    "name": "Biểu Đồ Xu Hướng Đa Tầng AI",
+    "label": "So Sánh Mực Nước Thực Tế vs Dự Báo Đa Mốc (+5m, +30m, +60m)",
+    "chartType": "line",
+    "legend": "true",
+    "xformat": "HH:mm:ss",
+    "interpolate": "linear",
+    "nodata": "Đang chờ dữ liệu AI Multi-Horizon...",
+    "dot": false,
+    "ymin": "0",
+    "ymax": "180",
+    "removeOlder": "30",
+    "removeOlderPoints": "",
+    "removeOlderUnit": "60",
+    "cutout": 0,
+    "useOneColor": false,
+    "useUTC": false,
+    "colors": [
+      "#2c3e50",
+      "#2ecc71",
+      "#e67e22",
+      "#e74c3c",
+      "#9b59b6",
+      "#34495e"
+    ],
+    "x": 660,
+    "y": 580,
+    "wires": [
+      []
+    ]
+  }
+]

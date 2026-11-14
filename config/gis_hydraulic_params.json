@@ -1,0 +1,30 @@
+{
+  "station_id": "cong1_thaiha",
+  "station_name": "Trạm cống ngầm Thái Hà - Đống Đa - Hà Nội",
+  "coordinates": {
+    "latitude": 21.0118,
+    "longitude": 105.8189
+  },
+  "gis_catchment": {
+    "catchment_area_ha": 12.5,
+    "description": "Diện tích lưu vực gom nước mặt của tuyến phố (Hécta)",
+    "runoff_coefficient_C": 0.85,
+    "runoff_description": "Hệ số dòng chảy mặt đô thị (0.85 = bê tông hóa cao, ít thấm)",
+    "surface_slope_pct": 0.35,
+    "surface_slope_description": "Độ dốc địa hình bề mặt lưu vực (%)",
+    "inlet_efficiency_pct": 80.0,
+    "inlet_description": "Hiệu suất thu nước hố ga (trừ hao 20% do rác bám lưới)"
+  },
+  "pipe_hydraulics": {
+    "pipe_diameter_mm": 1000,
+    "pipe_length_m": 450,
+    "pipe_slope_i": 0.002,
+    "slope_description": "Độ dốc đáy cống (0.2%)",
+    "manning_roughness_n": 0.013,
+    "manning_description": "Hệ số nhám cống bê tông cốt thép",
+    "max_discharge_capacity_m3s": 1.45,
+    "capacity_description": "Lưu lượng thoát nước tối đa tính theo công thức Manning (m3/s)",
+    "outfall_river": "Sông Tô Lịch",
+    "outfall_invert_level_m": 4.2
+  }
+}

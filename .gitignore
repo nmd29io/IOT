@@ -1,0 +1,43 @@
+# .gitignore — Flood Monitoring System
+
+# ─── Credentials & Secrets ───────────────────────────────────────────────────
+firmware/config.h
+config/secrets.env
+*.env
+.env
+
+# ─── Arduino / PlatformIO build artefacts ────────────────────────────────────
+firmware/**/.pio/
+firmware/**/build/
+firmware/**/*.bin
+firmware/**/*.elf
+firmware/**/*.map
+
+# ─── Node-RED ────────────────────────────────────────────────────────────────
+node_modules/
+.node_modules/
+# flows_cred.json contains encrypted credentials — exclude if not encrypted
+nodered/flows_cred.json
+
+# ─── Mosquitto runtime data ───────────────────────────────────────────────────
+mosquitto/data/mosquitto.db
+mosquitto/data/*.log
+
+# ─── Python / ML ─────────────────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+ml/.mpl/
+ml/__pycache__/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE ─────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
