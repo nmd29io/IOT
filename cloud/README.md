@@ -19,7 +19,8 @@ ESP32 node ──WiFi/MQTT──▶ GATEWAY (laptop: Mosquitto + Node-RED Edge)
 | Broker cloud | `mosquitto/mosquitto.conf`, `mosquitto/acl` | Chỉ nhận kết nối có mật khẩu; ACL giới hạn topic từng tài khoản |
 | Server | `server/server.js` | Nhận MQTT → lưu SQLite (đo 5 s/lần, nhật ký, sự cố) → REST API + WebSocket; gửi lệnh xuống gateway |
 | Web công khai | `server/public/index.html` | Bản đồ (Leaflet + OpenStreetMap), mức ngập, lời khuyên cho người đi đường |
-| Web quản lý | `server/public/admin.html` | Yêu cầu vận hành + nút xác nhận, KPI 7 ngày, biểu đồ lịch sử, bảng thiết bị, cấu hình/hiệu chuẩn từ xa, nhật ký |
+| App quản lý (PWA) | `server/public/admin.html`, `manifest.webmanifest`, `sw.js`, `icons/` | Cài lên màn hình chính điện thoại. Yêu cầu vận hành + nút xác nhận, cảnh báo gần đây, KPI 7 ngày, biểu đồ lịch sử, bảng thiết bị, cấu hình/hiệu chuẩn từ xa, nhật ký |
+| Thông báo đẩy | `server.js` (thư viện `web-push`, chuẩn VAPID) + `sw.js` | Cảnh báo từ gateway (`flood/edge/alert`) → điện thoại rung kể cả khi app đóng; bấm **✅ Đã xử lý** ngay trên thông báo |
 | HTTPS | `Caddyfile` | Tự xin chứng chỉ Let's Encrypt |
 
 ## API
@@ -31,10 +32,14 @@ ESP32 node ──WiFi/MQTT──▶ GATEWAY (laptop: Mosquitto + Node-RED Edge)
 | POST | `/api/login` | — | Kiểm tra mã quản trị |
 | GET | `/api/events`, `/api/incidents` | quản trị | Nhật ký; sự cố + thống kê (số sự cố, thời gian phản hồi, thời gian báo trước) |
 | POST | `/api/ack` | quản trị | Xác nhận đã xử lý → `flood/cloud/ack` |
+| GET | `/api/alerts` | quản trị | Cảnh báo gần đây |
+| GET | `/api/push/key` | công khai | Khoá công khai VAPID để trình duyệt đăng ký |
+| POST | `/api/push/subscribe`, `/api/push/unsubscribe`, `/api/push/test` | quản trị | Bật / tắt / thử thông báo trên một thiết bị |
+| POST | `/api/push/ack` | thiết bị đã đăng ký | Nút "Đã xử lý" trên thông báo (xác thực bằng đăng ký push, không cần mã) |
 | POST | `/api/nodes/:id/config` | quản trị | Cấu hình → `flood/cloud/config/<id>` |
 | POST | `/api/nodes/:id/cmd` | quản trị | `{"cmd":"calibrate"\|"report"}` → `flood/cloud/cmd/<id>` |
 | POST | `/api/nodes/:id/alarm` | quản trị | `{"action":"off"\|"on"}` → `flood/cloud/alarm/<id>` |
-| WS | `/ws` | công khai / quản trị | Đẩy `state`, `gateway`, `info`, `ai`; gửi `{"auth":token}` để nhận thêm `log`, `incident` |
+| WS | `/ws` | công khai / quản trị | Đẩy `state`, `gateway`, `info`, `ai`; gửi `{"auth":token}` để nhận thêm `log`, `incident`, `alert` |
 
 Quyền quản trị: header `x-admin-token: <ADMIN_TOKEN>`.
 
@@ -60,6 +65,11 @@ docker compose up -d --build
 docker compose logs -f server                      # thấy "[MQTT] Đã kết nối" là được
 ```
 Mở `https://<IP>.sslip.io` (trang công khai) và `https://<IP>.sslip.io/admin` (đăng nhập bằng `ADMIN_TOKEN`).
+
+**Cài app lên điện thoại người quản lý:** mở `https://<IP>.sslip.io/admin` trên điện thoại → đăng nhập →
+**📲 Cài ứng dụng** (Android/Chrome) hoặc Safari → Chia sẻ → *Thêm vào MH chính* (iPhone, iOS 16.4+) →
+mở app → **🔔 Bật thông báo** → **Gửi thử**. Thông báo đẩy bắt buộc chạy qua HTTPS (Caddy đã lo phần này).
+Khoá VAPID được tạo tự động lần đầu và lưu trong cơ sở dữ liệu.
 
 **3. Nối gateway (laptop) lên cloud**
 ```bat

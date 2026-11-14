@@ -7,7 +7,7 @@ Wokwi ESP32 (2 node logic cong1 + duong1)
 broker.hivemq.com   (topic có tiền tố riêng: uet-int3323-n1-09e061/flood/...)
       ▲ MQTT bridge (mosquitto/conf.d/wokwi-bridge.conf)
       │
-Laptop: Mosquitto ──▶ Node-RED ──▶ Dashboard / Telegram / Cloud   (không phải sửa gì)
+Laptop: Mosquitto ──▶ Node-RED ──▶ Dashboard / Cloud / app điện thoại   (không phải sửa gì)
 ```
 
 ESP32 trên Wokwi **không thấy laptop** (`localhost`, `10.x.x.x` đều không dùng được) nên phải đi qua một broker công cộng; Mosquitto trên laptop bridge broker đó về.
@@ -39,7 +39,7 @@ Khi đang chạy, **bấm vào cảm biến** để hiện thanh trượt khoả
 | Cảm biến | Khoảng cách | Kết quả |
 |---|---|---|
 | Trên – cống (H = 60, Hmax = 35) | 60 → 40 cm | L ≈ 57% → **VÀNG** |
-| | kéo nhanh xuống 35 cm (dâng ≥ 5 cm/phút) hoặc 30 cm | **ĐỎ** → Telegram yêu cầu bật bơm/mở van |
+| | kéo nhanh xuống 35 cm (dâng ≥ 5 cm/phút) hoặc 30 cm | **ĐỎ** → thông báo đẩy yêu cầu bật bơm/mở van |
 | Dưới – đường (d0 = 50) | 38 cm | ngập 12 cm → đèn **vàng** sau 5 s |
 | | 25 cm | ngập 25 cm → đèn **đỏ** + còi |
 | | kéo về 25 cm chỉ 2 giây rồi trả lại | **không đổi mức** (lọc xe/người đi qua) |

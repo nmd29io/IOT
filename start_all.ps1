@@ -1,6 +1,6 @@
 # start_all.ps1 - Khoi dong toan bo he thong Flood Monitor tren may Edge (laptop)
 # Mosquitto Broker + Edge ML Service + Node-RED (Edge IT + Dashboard)
-# Bi mat (Telegram chat id, ThingSpeak key) doc tu config\secrets.env (khong commit).
+# Canh bao den dien thoai: Web Push tu cloud cua nhom (xem cloud/README.md).
 
 $baseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $problems = @()
@@ -9,21 +9,6 @@ Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   HE THONG IOT GIAM SAT VA CANH BAO NGAP UNG DO THI" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
-
-# 0. Nap bien moi truong tu config\secrets.env (dang KEY=VALUE)
-$secrets = Join-Path $baseDir "config\secrets.env"
-if (Test-Path $secrets) {
-    Get-Content $secrets | ForEach-Object {
-        $line = $_.Trim()
-        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
-            $k, $v = $line.Split("=", 2)
-            [Environment]::SetEnvironmentVariable($k.Trim(), $v.Trim(), "Process")
-        }
-    }
-    Write-Host "[0/3] Da nap config\secrets.env" -ForegroundColor Green
-} else {
-    Write-Host "[0/3] Chua co config\secrets.env -> Telegram/ThingSpeak tat (he thong van chay)" -ForegroundColor Yellow
-}
 
 # 1. Mosquitto (chay trong thu muc mosquitto\ de duong dan tuong doi trong mosquitto.conf dung)
 $mosquittoExe = $null
@@ -66,7 +51,7 @@ if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
     Write-Host "[3/3] LOI: chua cai Node.js" -ForegroundColor Red
     $problems += "Cai Node.js LTS: https://nodejs.org"
 } else {
-    # Palette (node-red-dashboard, node-red-contrib-telegrambot) nam trong userDir\node_modules
+    # Palette node-red-dashboard nam trong userDir\node_modules
     if (-not (Test-Path (Join-Path $userDir "node_modules\node-red-dashboard"))) {
         Write-Host "[3/3] Cai palette Node-RED lan dau (1-2 phut)..." -ForegroundColor Yellow
         & npm.cmd install --prefix "$userDir" --no-audit --no-fund

@@ -48,39 +48,6 @@
         "sessionExpiry": ""
     },
     {
-        "id": "telegram_bot_config",
-        "type": "telegram bot",
-        "usernames": [],
-        "chatids": [],
-        "name": "FloodAlertBot",
-        "token": "",
-        "updatemode": "polling",
-        "pollinterval": "300",
-        "usesocks": false,
-        "sockshost": "",
-        "socksprotocol": "socks5",
-        "socksport": "6667",
-        "socksusername": "",
-        "sockspassword": "",
-        "botname": "FloodAlertBot",
-        "userInfo": false,
-        "parsemode": "Markdown",
-        "protected": false
-    },
-    {
-        "id": "tls_thingspeak",
-        "type": "tls-config",
-        "name": "ThingSpeak TLS",
-        "cert": "",
-        "key": "",
-        "ca": "",
-        "certname": "",
-        "keyname": "",
-        "caname": "",
-        "servername": "",
-        "verifyservercert": false
-    },
-    {
         "id": "ui_group_ai",
         "type": "ui_group",
         "name": "🤖 Dự Báo AI Đa Tầng Thời Gian (5m - 15m - 30m - 60m)",
@@ -112,7 +79,7 @@
         "type": "function",
         "z": "tab_flood_main",
         "name": "Process Multi-Horizon AI",
-        "func": "var p = msg.payload;\nif (!p) return null;\n\n// Output 1: Gauge dự báo mực nước 5m (pure number)\nvar msgGauge5m = {\n    payload: p.predicted_level_5m,\n    topic: 'Dự báo +5m'\n};\n\n// Output 2: Gauge xác suất ngập 30m (%) (pure number)\nvar msgGauge30m = {\n    payload: p.prob_flood_30m,\n    topic: 'Xác suất ngập +30m (%)'\n};\n\n// Output 3: Trạng thái đa tầng (Object for UI Template)\nvar msgStatus = {\n    payload: {\n        status_color: p.status_color || '#2ecc71',\n        predicted_status: p.predicted_status || 'AN TOÀN',\n        predicted_fill_5m: p.predicted_fill_5m || 0,\n        status_30m_color: p.status_30m_color || '#2ecc71',\n        status_30m: p.status_30m || 'AN TOÀN THOÁT NƯỚC',\n        prob_flood_30m: p.prob_flood_30m || 0,\n        current_level: p.current_level || 0,\n        predicted_level_15m: p.predicted_level_15m || 0,\n        predicted_level_30m: p.predicted_level_30m || 0,\n        predicted_level_60m: p.predicted_level_60m || 0\n    }\n};\n\n// Output 4: Khuyến nghị điều phối giao thông (Object for UI Template)\nvar warnColor = p.early_warning ? '#e74c3c' : (p.prob_flood_30m >= 50 ? '#f39c12' : '#2ecc71');\nvar msgTraffic = {\n    payload: {\n        traffic_color: warnColor,\n        traffic_advisory: p.traffic_advisory || 'Lưu lượng thoát ổn định.'\n    }\n};\n\n// Output 5: Biểu đồ đa đường (Actual, +5m, +30m, +60m)\nvar msgChartActual = { topic: '1. Mực nước thực tế (cm)', payload: p.current_level };\nvar msgChart5m     = { topic: '2. Dự báo AI +5m (cm)',   payload: p.predicted_level_5m };\nvar msgChart30m    = { topic: '3. Dự báo AI +30m (cm)',  payload: p.predicted_level_30m };\nvar msgChart60m    = { topic: '4. Dự báo AI +60m (cm)',  payload: p.predicted_level_60m };\n\n// Output 6: Telegram early warning alert\nvar msgTg = null;\nif (p.early_warning) {\n    var lastAlert = flow.get('last_ai_alert_time') || 0;\n    var now = Date.now();\n    if (now - lastAlert > 180000) {\n        flow.set('last_ai_alert_time', now);\n        var tgChatId = global.get('telegram_chat_id');\n        msgTg = {\n            payload: {\n                chatId: tgChatId,\n                type: 'message',\n                content: '🚨 *CẢNH BÁO SỚM ĐIỀU PHỐI GIAO THÔNG (AI MULTI-HORIZON)*\\n\\n' +\n                         '📍 *Vị trí:* Cống 1 & Điểm trũng mặt đường\\n' +\n                         '🌊 *Mực nước hiện tại:* ' + p.current_level + ' cm (' + p.current_fill + '%)\\n' +\n                         '🔮 *Dự báo +5 phút:* ' + p.predicted_level_5m + ' cm\\n' +\n                         '🔮 *Dự báo +30 phút:* ' + p.predicted_level_30m + ' cm (*Xác suất ngập: ' + p.prob_flood_30m + '%*)\\n' +\n                         '🔮 *Dự báo +60 phút:* ' + p.predicted_level_60m + ' cm\\n\\n' +\n                         '📢 *Khuyến nghị:* ' + p.traffic_advisory + '\\n\\n' +\n                         '_(Tích hợp Radar Nowcasting & Cảm biến IoT UET)_'\n            }\n        };\n    }\n}\n\nreturn [msgGauge5m, msgGauge30m, msgStatus, msgTraffic, [msgChartActual, msgChart5m, msgChart30m, msgChart60m], msgTg];\n",
+        "func": "var p = msg.payload;\nif (!p) return null;\n\n// Output 1: Gauge dự báo mực nước 5m (pure number)\nvar msgGauge5m = {\n    payload: p.predicted_level_5m,\n    topic: 'Dự báo +5m'\n};\n\n// Output 2: Gauge xác suất ngập 30m (%) (pure number)\nvar msgGauge30m = {\n    payload: p.prob_flood_30m,\n    topic: 'Xác suất ngập +30m (%)'\n};\n\n// Output 3: Trạng thái đa tầng (Object for UI Template)\nvar msgStatus = {\n    payload: {\n        status_color: p.status_color || '#2ecc71',\n        predicted_status: p.predicted_status || 'AN TOÀN',\n        predicted_fill_5m: p.predicted_fill_5m || 0,\n        status_30m_color: p.status_30m_color || '#2ecc71',\n        status_30m: p.status_30m || 'AN TOÀN THOÁT NƯỚC',\n        prob_flood_30m: p.prob_flood_30m || 0,\n        current_level: p.current_level || 0,\n        predicted_level_15m: p.predicted_level_15m || 0,\n        predicted_level_30m: p.predicted_level_30m || 0,\n        predicted_level_60m: p.predicted_level_60m || 0\n    }\n};\n\n// Output 4: Khuyến nghị điều phối giao thông (Object for UI Template)\nvar warnColor = p.early_warning ? '#e74c3c' : (p.prob_flood_30m >= 50 ? '#f39c12' : '#2ecc71');\nvar msgTraffic = {\n    payload: {\n        traffic_color: warnColor,\n        traffic_advisory: p.traffic_advisory || 'Lưu lượng thoát ổn định.'\n    }\n};\n\n// Output 5: Biểu đồ đa đường (Actual, +5m, +30m, +60m)\nvar msgChartActual = { topic: '1. Mực nước thực tế (cm)', payload: p.current_level };\nvar msgChart5m     = { topic: '2. Dự báo AI +5m (cm)',   payload: p.predicted_level_5m };\nvar msgChart30m    = { topic: '3. Dự báo AI +30m (cm)',  payload: p.predicted_level_30m };\nvar msgChart60m    = { topic: '4. Dự báo AI +60m (cm)',  payload: p.predicted_level_60m };\n\n// Output 6: cảnh báo sớm → kênh cảnh báo chung (fn_ai_alert → flood/edge/alert)\nvar msgAlert = null;\nif (p.early_warning) {\n    var lastAlert = flow.get('last_ai_alert_time') || 0;\n    var now = Date.now();\n    if (now - lastAlert > 180000) {\n        flow.set('last_ai_alert_time', now);\n        msgAlert = {\n            payload: {\n                content: '🚨 *CẢNH BÁO SỚM ĐIỀU PHỐI GIAO THÔNG (AI MULTI-HORIZON)*\\n\\n' +\n                         '📍 *Vị trí:* Cống 1 & Điểm trũng mặt đường\\n' +\n                         '🌊 *Mực nước hiện tại:* ' + p.current_level + ' cm (' + p.current_fill + '%)\\n' +\n                         '🔮 *Dự báo +5 phút:* ' + p.predicted_level_5m + ' cm\\n' +\n                         '🔮 *Dự báo +30 phút:* ' + p.predicted_level_30m + ' cm (*Xác suất ngập: ' + p.prob_flood_30m + '%*)\\n' +\n                         '🔮 *Dự báo +60 phút:* ' + p.predicted_level_60m + ' cm\\n\\n' +\n                         '📢 *Khuyến nghị:* ' + p.traffic_advisory + '\\n\\n' +\n                         '_(Tích hợp Radar Nowcasting & Cảm biến IoT UET)_'\n            }\n        };\n    }\n}\n\nreturn [msgGauge5m, msgGauge30m, msgStatus, msgTraffic, [msgChartActual, msgChart5m, msgChart30m, msgChart60m], msgAlert];\n",
         "outputs": 6,
         "noerr": 0,
         "x": 360,
@@ -134,7 +101,7 @@
                 "ui_chart_ai_compare"
             ],
             [
-                "fn_tg_out"
+                "fn_ai_alert"
             ]
         ]
     },
@@ -625,7 +592,7 @@
         "type": "function",
         "z": "tab_flood_main",
         "name": "Bộ quyết định cảnh báo & sự cố",
-        "func": "// ═══════════════════════════════════════════════════════════════════════════\n// Bộ quyết định cảnh báo (Edge IT)\n//  - Gửi Telegram mỗi khi mức của một node thay đổi (cả lên và xuống)\n//  - Cống lên ĐỎ → mở \"sự cố\": gửi YÊU CẦU bật bơm/mở van kèm nút Xác nhận\n//  - Chưa xác nhận sau 10 phút mà cống vẫn ĐỎ → nhắc lại\n//  - Cống ĐỎ + đường ≥ VÀNG → \"Ngập đang lan rộng\" + thời gian báo trước\n//  - Node offline (Last Will) hoặc im lặng > 30 s → báo mất kết nối\n// Đầu vào (msg.topic): level | conn | tick | ack | query\n// Đầu ra: 1 Telegram · 2 tình trạng chung · 3 yêu cầu vận hành · 4 nhật ký\n//         5 trạng thái tổng hợp → flood/edge/state (retained, bridge lên cloud)\n//         6 bản ghi sự cố đã đóng → flood/edge/incident (cloud lưu để thống kê)\n// ═══════════════════════════════════════════════════════════════════════════\nconst REMIND_MS = 10 * 60 * 1000;\nconst STALE_MS  = 30 * 1000;\nconst LVN  = { green: '🟢 XANH', yellow: '🟡 VÀNG', red: '🔴 ĐỎ' };\nconst RANK = { green: 0, yellow: 1, red: 2 };\n\nconst now = Date.now();\nconst chatId = global.get('telegram_chat_id');\nconst reg = flow.get('reg') || {};\nconst incidents = flow.get('incidents') || {};\nconst devInfo = flow.get('info') || {};\nconst tg = [], logs = [], closed = [];\n\nconst hhmm = t => new Date(t).toLocaleTimeString('vi-VN', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });\nconst dur = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? s + ' giây' : Math.floor(s / 60) + ' phút ' + (s % 60) + ' giây'; };\nconst md = s => String(s).replace(/([_*`\\[])/g, '\\\\$1');\nconst sign = v => (v >= 0 ? '+' : '') + v;\nfunction kindOf(id) {\n    const r = reg[id] || {}, i = devInfo[id] || {};\n    return r.kind || (i.role === 'drain' ? 'drain' : i.role === 'road' ? 'road' : '');\n}\nconst label = id => ({ drain: 'Cống ', road: 'Đường ' }[kindOf(id)] || 'Node ') + id;\nconst entry = id => (reg[id] = reg[id] || { id });\n\nfunction send(text, keyboard, to) {\n    const pl = { chatId: to || chatId, type: 'message', content: text };\n    if (keyboard) pl.options = { reply_markup: JSON.stringify({ inline_keyboard: keyboard }) };\n    tg.push({ payload: pl });\n}\nfunction log(text) { logs.push({ payload: { t: now, text } }); }\nconst ackButton = inc => [[{ text: '✅ Đã xử lý (bật bơm / mở van)', callback_data: 'ack:' + inc.key }]];\n\nfunction closeIncident(id) {\n    const inc = incidents[id];\n    if (!inc) return '';\n    delete incidents[id];\n    closed.push({ topic: 'flood/edge/incident', qos: 1, retain: false, payload: {\n        key: inc.key, node: id, start: inc.start, end: now, duration_s: Math.round((now - inc.start) / 1000),\n        ack: inc.ack, ack_by: inc.ack_by || null, ack_at: inc.ack_at || null,\n        response_s: inc.ack ? Math.round((inc.ack_at - inc.start) / 1000) : null,\n        reminders: inc.reminders, max_L: inc.max_L || null, lead_s: inc.lead_s || null } });\n    const ackTxt = inc.ack ? `đã xác nhận bởi ${md(inc.ack_by)} sau ${dur(inc.ack_at - inc.start)}` : 'CHƯA có xác nhận xử lý';\n    log(`Đóng sự cố ${id}: mức đỏ kéo dài ${dur(now - inc.start)}, ${inc.ack ? 'đã' : 'chưa'} xác nhận`);\n    return `\\n📋 Sự cố mức đỏ kéo dài ${dur(now - inc.start)}, ${ackTxt}.`;\n}\n\nfunction drainChanged(id, prev, cur, d) {\n    const info = `Mực nước ${d.L}% (${d.m} cm), tốc độ dâng ${sign(d.v)} cm/phút`;\n    if (cur === 'red') {\n        const inc = { key: id + '-' + now, node: id, start: now, last_sent: now, reminders: 0, ack: false, max_L: d.L };\n        incidents[id] = inc;\n        send(`🔴 *KHẨN – ${label(id)}*\\n${info}.\\n👉 *YÊU CẦU bật bơm / mở van* chuyển dòng sang trục cống hoặc hồ điều hòa còn dung tích.\\nBấm nút bên dưới sau khi đã xử lý.`, ackButton(inc));\n        log(`${label(id)} lên ĐỎ (${d.L}%, ${sign(d.v)} cm/ph) → gửi yêu cầu vận hành`);\n        return;\n    }\n    const summary = prev === 'red' ? closeIncident(id) : '';\n    if (cur === 'yellow') {\n        send(`🟡 *THEO DÕI – ${label(id)}*\\n${info}.${summary}`);\n        log(`${label(id)} ${prev === 'red' ? 'hạ xuống' : 'lên'} VÀNG (${d.L}%, ${sign(d.v)} cm/ph)`);\n    } else {\n        send(`🟢 *${label(id)} trở về an toàn*\\n${info}.${summary}`);\n        log(`${label(id)} trở về XANH (${d.L}%)`);\n    }\n}\n\nfunction roadChanged(id, prev, cur, d) {\n    const text = {\n        red:    `🔴 *KHẨN – ${label(id)} ngập ${d.h} cm*\\nKhông nên đi xe máy. Đèn đỏ và còi đang bật tại chỗ.`,\n        yellow: prev === 'red'\n            ? `🟡 *${label(id)}* giảm còn ${d.h} cm – xe máy đi chậm, cẩn trọng.`\n            : `🟡 *THEO DÕI – ${label(id)} ngập ${d.h} cm*\\nXe máy đi chậm, cẩn trọng.`,\n        green:  `🟢 *${label(id)} hết ngập* (${d.h} cm) – đi lại bình thường.`\n    }[cur];\n    send(text);\n    log(`${label(id)}: ${LVN[prev]} → ${LVN[cur]} (${d.h} cm)`);\n}\n\nfunction setOnline(id, on) {\n    const r = entry(id);\n    const was = r.online;\n    r.online = on;\n    if (!on && was !== false) {\n        send(`⚠️ *Mất kết nối ${label(id)}*\\nBroker phát Last Will lúc ${hhmm(now)}. Dữ liệu tại điểm này đang không được cập nhật.`);\n        log(`${label(id)} OFFLINE`);\n    }\n    if (on && was === false) {\n        send(`✅ ${label(id)} đã kết nối lại.`);\n        log(`${label(id)} ONLINE trở lại`);\n    }\n}\n\nfunction checkSpread() {\n    const vals = Object.values(reg).filter(r => r.online !== false);\n    const redDrains = vals.filter(r => r.kind === 'drain' && r.level === 'red');\n    const wetRoads  = vals.filter(r => r.kind === 'road' && RANK[r.level] >= 1);\n    const spread = redDrains.length > 0 && wetRoads.length > 0;\n    const was = flow.get('spread') || false;\n    if (spread && !was) {\n        const firstRed = Math.min(...redDrains.map(r => (incidents[r.id] || {}).start || now));\n        const lead = now - firstRed;\n        flow.set('last_lead_ms', lead);\n        for (const r of redDrains) if (incidents[r.id] && !incidents[r.id].lead_s) incidents[r.id].lead_s = Math.round(lead / 1000);\n        send(`🌊 *NGẬP ĐANG LAN RỘNG*\\n${redDrains.map(r => label(r.id)).join(', ')} ở mức ĐỎ và ${wetRoads.map(r => label(r.id) + ' ngập ' + r.data.h + ' cm').join(', ')}.\\n⏱ Cống đã báo đỏ trước ${dur(lead)} so với lúc nước lên mặt đường.\\n👉 Ưu tiên điều phối bơm và phân luồng giao thông.`);\n        log(`Ngập lan rộng – cống báo trước ${dur(lead)}`);\n    } else if (!spread && was) {\n        log('Hết tình trạng ngập lan rộng');\n    }\n    flow.set('spread', spread);\n    return spread;\n}\n\nswitch (msg.topic) {\n    case 'level': {\n        const id = msg.node;\n        const r = entry(id);\n        r.kind = msg.kind;\n        r.data = msg.data;\n        r.last_seen = now;\n        if (r.online === false) setOnline(id, true);      // có dữ liệu ⇒ đã online\n        else r.online = true;\n        if (r.stale) {\n            r.stale = false;\n            send(`✅ ${label(id)} gửi dữ liệu trở lại.`);\n            log(`${label(id)} có dữ liệu trở lại`);\n        }\n        const prev = r.level || 'green';\n        r.level = msg.level;\n        if (msg.kind === 'drain' && incidents[id]) incidents[id].max_L = Math.max(incidents[id].max_L || 0, msg.data.L);\n        if (prev !== msg.level) (msg.kind === 'drain' ? drainChanged : roadChanged)(id, prev, msg.level, msg.data);\n        break;\n    }\n    case 'conn':\n        setOnline(msg.node, msg.payload === 'online');\n        break;\n\n    case 'tick': {\n        for (const r of Object.values(reg)) {\n            if (r.online !== false && r.last_seen && !r.stale && now - r.last_seen > STALE_MS) {\n                r.stale = true;\n                send(`⚠️ *${label(r.id)} không gửi dữ liệu* trong ${dur(now - r.last_seen)} (kết nối vẫn mở – kiểm tra cảm biến).`);\n                log(`${label(r.id)} không có dữ liệu mới`);\n            }\n        }\n        for (const inc of Object.values(incidents)) {\n            const r = reg[inc.node];\n            if (!inc.ack && r && r.level === 'red' && now - inc.last_sent >= REMIND_MS) {\n                inc.reminders++;\n                inc.last_sent = now;\n                send(`⏰ *NHẮC LẠI lần ${inc.reminders} – ${label(inc.node)}*\\nCống vẫn ở mức ĐỎ sau ${dur(now - inc.start)} mà chưa có xác nhận xử lý.\\nHiện tại: ${r.data.L}%, dâng ${sign(r.data.v)} cm/phút.\\n👉 *YÊU CẦU bật bơm / mở van.*`, ackButton(inc));\n                log(`Nhắc lại yêu cầu vận hành ${inc.node} (lần ${inc.reminders})`);\n            }\n        }\n        break;\n    }\n    case 'ack': {\n        const by = msg.by || 'Người quản lý', src = msg.source || 'Dashboard';\n        const pending = Object.values(incidents).filter(i => !i.ack && (!msg.key || i.key === msg.key));\n        let reply;\n        if (!pending.length) {\n            const already = msg.key && Object.values(incidents).some(i => i.key === msg.key);\n            reply = already ? 'Sự cố này đã được xác nhận trước đó.' : 'Không còn yêu cầu nào đang chờ (sự cố có thể đã đóng).';\n            if (src === 'Dashboard') log('Bấm xác nhận nhưng không có yêu cầu nào đang chờ');\n        } else {\n            for (const inc of pending) {\n                inc.ack = true; inc.ack_at = now; inc.ack_by = by;\n                send(`✅ *${md(by)}* (qua ${src}) đã xác nhận xử lý sự cố ${label(inc.node)} lúc ${hhmm(now)} – phản hồi sau ${dur(now - inc.start)}.`);\n                log(`${by} xác nhận xử lý ${inc.node} qua ${src}, phản hồi sau ${dur(now - inc.start)}`);\n            }\n            reply = 'Đã ghi nhận xác nhận. Cảm ơn!';\n        }\n        if (msg.cb && msg.cb.id) {\n            tg.push({ payload: { chatId: msg.cb.chatId, type: 'answerCallbackQuery', callbackQueryId: msg.cb.id, content: reply } });\n        }\n        break;\n    }\n    case 'query': {\n        const lines = Object.values(reg).sort((a, b) => a.id.localeCompare(b.id)).map(r => {\n            const conn = r.online === false ? '🔴 offline' : r.stale ? '🟠 không có dữ liệu' : '🟢 online';\n            const val = !r.data ? 'chưa có dữ liệu'\n                : r.kind === 'drain' ? `${r.data.L}% (${r.data.m} cm), dâng ${sign(r.data.v)} cm/ph`\n                : `ngập ${r.data.h} cm`;\n            return `${LVN[r.level] || '⚪'} ${label(r.id)}: ${val} · ${conn}`;\n        });\n        const open = Object.values(incidents).map(i =>\n            `• ${label(i.node)}: từ ${hhmm(i.start)}, ${i.ack ? 'đã xác nhận bởi ' + md(i.ack_by) : 'CHƯA xác nhận'}`);\n        send(`📊 *Trạng thái lúc ${hhmm(now)}*\\n${lines.join('\\n') || 'Chưa có node nào.'}` +\n             (open.length ? '\\n\\n🚨 Yêu cầu vận hành:\\n' + open.join('\\n') : ''), null, msg.chatId);\n        break;\n    }\n    default:\n        return null;\n}\n\nconst spread = checkSpread();\nconst vals = Object.values(reg);\nconst worst = Math.max(0, ...vals.filter(r => r.online !== false).map(r => RANK[r.level] || 0));\nconst offline = vals.filter(r => r.online === false || r.stale).map(r => r.id);\nlet combined = spread ? '🌊 NGẬP ĐANG LAN RỘNG – cống đỏ và đường đã ngập'\n    : ['🟢 AN TOÀN', '🟡 CẦN THEO DÕI', '🔴 NGUY HIỂM'][worst];\nif (offline.length) combined += ' · ⚠️ mất kết nối: ' + offline.join(', ');\n\nconst open = Object.values(incidents);\nconst incText = !open.length ? 'Không có yêu cầu nào'\n    : open.map(i => `${label(i.node)}: bật bơm/mở van (từ ${hhmm(i.start)}) – ` +\n        (i.ack ? `✅ ${i.ack_by} đã xác nhận` : '⏳ chờ xác nhận' + (i.reminders ? `, đã nhắc ${i.reminders} lần` : ''))).join(' | ');\n\nflow.set('reg', reg);\nflow.set('incidents', incidents);\nconst state = {\n    ts: now, combined, worst: ['green', 'yellow', 'red'][worst], spread, lead_ms: flow.get('last_lead_ms') || null,\n    nodes: Object.fromEntries(vals.map(r => [r.id, {\n        kind: r.kind || kindOf(r.id) || null, level: r.level || null, online: r.online !== false,\n        stale: !!r.stale, last_seen: r.last_seen || null, data: r.data || null }])),\n    incidents: open.map(i => ({ key: i.key, node: i.node, start: i.start, ack: i.ack, ack_by: i.ack_by || null,\n        ack_at: i.ack_at || null, reminders: i.reminders, max_L: i.max_L || null }))\n};\nreturn [tg.length ? tg : null, { payload: combined }, { payload: incText }, logs.length ? logs : null,\n        { topic: 'flood/edge/state', payload: state, retain: true, qos: 0 }, closed.length ? closed : null];\n",
+        "func": "// ═══════════════════════════════════════════════════════════════════════════\n// Bộ quyết định cảnh báo (Edge IT)\n//  - Phát cảnh báo mỗi khi mức của một node thay đổi (cả lên và xuống)\n//  - Cống lên ĐỎ → mở \"sự cố\": YÊU CẦU bật bơm/mở van, chờ người quản lý xác nhận\n//  - Chưa xác nhận sau 10 phút mà cống vẫn ĐỎ → nhắc lại\n//  - Cống ĐỎ + đường ≥ VÀNG → \"Ngập đang lan rộng\" + thời gian báo trước\n//  - Node offline (Last Will) hoặc im lặng > 30 s → báo mất kết nối\n// Đầu vào (msg.topic): level | conn | tick | ack\n// Đầu ra: 1 cảnh báo → flood/edge/alert (cloud đẩy Web Push tới điện thoại) + thông báo dashboard\n//         2 tình trạng chung · 3 yêu cầu vận hành · 4 nhật ký\n//         5 trạng thái tổng hợp → flood/edge/state (retained, bridge lên cloud)\n//         6 bản ghi sự cố đã đóng → flood/edge/incident (cloud lưu để thống kê)\n// ═══════════════════════════════════════════════════════════════════════════\nconst REMIND_MS = 10 * 60 * 1000;\nconst STALE_MS  = 30 * 1000;\nconst LVN  = { green: '🟢 XANH', yellow: '🟡 VÀNG', red: '🔴 ĐỎ' };\nconst RANK = { green: 0, yellow: 1, red: 2 };\n\nconst now = Date.now();\nconst reg = flow.get('reg') || {};\nconst incidents = flow.get('incidents') || {};\nconst devInfo = flow.get('info') || {};\nconst alerts = [], logs = [], closed = [];\n\nconst hhmm = t => new Date(t).toLocaleTimeString('vi-VN', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });\nconst dur = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? s + ' giây' : Math.floor(s / 60) + ' phút ' + (s % 60) + ' giây'; };\nconst sign = v => (v >= 0 ? '+' : '') + v;\nfunction kindOf(id) {\n    const r = reg[id] || {}, i = devInfo[id] || {};\n    return r.kind || (i.role === 'drain' ? 'drain' : i.role === 'road' ? 'road' : '');\n}\nconst label = id => ({ drain: 'Cống ', road: 'Đường ' }[kindOf(id)] || 'Node ') + id;\nconst entry = id => (reg[id] = reg[id] || { id });\n\n// severity: critical (cần hành động) | warning | info.  key: mã sự cố → thông báo có nút \"Đã xử lý\"\nfunction alert(severity, title, body, node, key) {\n    alerts.push({ topic: 'flood/edge/alert', qos: 1, retain: false,\n        payload: { ts: now, severity, title, body, node: node || null, key: key || null } });\n}\nfunction log(text) { logs.push({ payload: { t: now, text } }); }\n\nfunction closeIncident(id) {\n    const inc = incidents[id];\n    if (!inc) return '';\n    delete incidents[id];\n    closed.push({ topic: 'flood/edge/incident', qos: 1, retain: false, payload: {\n        key: inc.key, node: id, start: inc.start, end: now, duration_s: Math.round((now - inc.start) / 1000),\n        ack: inc.ack, ack_by: inc.ack_by || null, ack_at: inc.ack_at || null,\n        response_s: inc.ack ? Math.round((inc.ack_at - inc.start) / 1000) : null,\n        reminders: inc.reminders, max_L: inc.max_L || null, lead_s: inc.lead_s || null } });\n    const ackTxt = inc.ack ? `đã xác nhận bởi ${inc.ack_by} sau ${dur(inc.ack_at - inc.start)}` : 'CHƯA có xác nhận xử lý';\n    log(`Đóng sự cố ${id}: mức đỏ kéo dài ${dur(now - inc.start)}, ${inc.ack ? 'đã' : 'chưa'} xác nhận`);\n    return ` Sự cố mức đỏ kéo dài ${dur(now - inc.start)}, ${ackTxt}.`;\n}\n\nfunction drainChanged(id, prev, cur, d) {\n    const info = `Mực nước ${d.L}% (${d.m} cm), tốc độ dâng ${sign(d.v)} cm/phút.`;\n    if (cur === 'red') {\n        const inc = { key: id + '-' + now, node: id, start: now, last_sent: now, reminders: 0, ack: false, max_L: d.L };\n        incidents[id] = inc;\n        alert('critical', `🔴 KHẨN – ${label(id)}: YÊU CẦU bật bơm / mở van`,\n            `${info} Chuyển dòng sang trục cống hoặc hồ điều hòa còn dung tích, rồi bấm \"Đã xử lý\".`, id, inc.key);\n        log(`${label(id)} lên ĐỎ (${d.L}%, ${sign(d.v)} cm/ph) → gửi yêu cầu vận hành`);\n        return;\n    }\n    const summary = prev === 'red' ? closeIncident(id) : '';\n    if (cur === 'yellow') {\n        alert('warning', `🟡 Theo dõi – ${label(id)}`, info + summary, id);\n        log(`${label(id)} ${prev === 'red' ? 'hạ xuống' : 'lên'} VÀNG (${d.L}%, ${sign(d.v)} cm/ph)`);\n    } else {\n        alert('info', `🟢 ${label(id)} trở về an toàn`, info + summary, id);\n        log(`${label(id)} trở về XANH (${d.L}%)`);\n    }\n}\n\nfunction roadChanged(id, prev, cur, d) {\n    const t = {\n        red:    ['critical', `🔴 KHẨN – ${label(id)} ngập ${d.h} cm`, 'Không nên đi xe máy. Đèn đỏ và còi đang bật tại chỗ.'],\n        yellow: ['warning', `🟡 ${label(id)} ngập ${d.h} cm`, prev === 'red' ? 'Nước đang rút. Xe máy đi chậm, cẩn trọng.' : 'Xe máy đi chậm, cẩn trọng.'],\n        green:  ['info', `🟢 ${label(id)} hết ngập`, `Độ sâu ${d.h} cm – đi lại bình thường.`]\n    }[cur];\n    alert(t[0], t[1], t[2], id);\n    log(`${label(id)}: ${LVN[prev]} → ${LVN[cur]} (${d.h} cm)`);\n}\n\nfunction setOnline(id, on) {\n    const r = entry(id);\n    const was = r.online;\n    r.online = on;\n    if (!on && was !== false) {\n        alert('warning', `⚠️ Mất kết nối ${label(id)}`, `Broker phát Last Will lúc ${hhmm(now)}. Dữ liệu tại điểm này đang không được cập nhật.`, id);\n        log(`${label(id)} OFFLINE`);\n    }\n    if (on && was === false) {\n        alert('info', `✅ ${label(id)} đã kết nối lại`, `Lúc ${hhmm(now)}.`, id);\n        log(`${label(id)} ONLINE trở lại`);\n    }\n}\n\nfunction checkSpread() {\n    const vals = Object.values(reg).filter(r => r.online !== false);\n    const redDrains = vals.filter(r => r.kind === 'drain' && r.level === 'red');\n    const wetRoads  = vals.filter(r => r.kind === 'road' && RANK[r.level] >= 1);\n    const spread = redDrains.length > 0 && wetRoads.length > 0;\n    const was = flow.get('spread') || false;\n    if (spread && !was) {\n        const firstRed = Math.min(...redDrains.map(r => (incidents[r.id] || {}).start || now));\n        const lead = now - firstRed;\n        flow.set('last_lead_ms', lead);\n        for (const r of redDrains) if (incidents[r.id] && !incidents[r.id].lead_s) incidents[r.id].lead_s = Math.round(lead / 1000);\n        alert('critical', '🌊 NGẬP ĐANG LAN RỘNG',\n            `${redDrains.map(r => label(r.id)).join(', ')} ở mức ĐỎ và ${wetRoads.map(r => label(r.id) + ' ngập ' + r.data.h + ' cm').join(', ')}. ` +\n            `Cống đã báo đỏ trước ${dur(lead)} so với lúc nước lên mặt đường. Ưu tiên điều phối bơm và phân luồng giao thông.`);\n        log(`Ngập lan rộng – cống báo trước ${dur(lead)}`);\n    } else if (!spread && was) {\n        log('Hết tình trạng ngập lan rộng');\n    }\n    flow.set('spread', spread);\n    return spread;\n}\n\nswitch (msg.topic) {\n    case 'level': {\n        const id = msg.node;\n        const r = entry(id);\n        r.kind = msg.kind;\n        r.data = msg.data;\n        r.last_seen = now;\n        if (r.online === false) setOnline(id, true);      // có dữ liệu ⇒ đã online\n        else r.online = true;\n        if (r.stale) {\n            r.stale = false;\n            alert('info', `✅ ${label(id)} gửi dữ liệu trở lại`, `Lúc ${hhmm(now)}.`, id);\n            log(`${label(id)} có dữ liệu trở lại`);\n        }\n        const prev = r.level || 'green';\n        r.level = msg.level;\n        if (msg.kind === 'drain' && incidents[id]) incidents[id].max_L = Math.max(incidents[id].max_L || 0, msg.data.L);\n        if (prev !== msg.level) (msg.kind === 'drain' ? drainChanged : roadChanged)(id, prev, msg.level, msg.data);\n        break;\n    }\n    case 'conn':\n        setOnline(msg.node, msg.payload === 'online');\n        break;\n\n    case 'tick': {\n        for (const r of Object.values(reg)) {\n            if (r.online !== false && r.last_seen && !r.stale && now - r.last_seen > STALE_MS) {\n                r.stale = true;\n                alert('warning', `⚠️ ${label(r.id)} không gửi dữ liệu`, `Đã ${dur(now - r.last_seen)} (kết nối vẫn mở – kiểm tra cảm biến).`, r.id);\n                log(`${label(r.id)} không có dữ liệu mới`);\n            }\n        }\n        for (const inc of Object.values(incidents)) {\n            const r = reg[inc.node];\n            if (!inc.ack && r && r.level === 'red' && now - inc.last_sent >= REMIND_MS) {\n                inc.reminders++;\n                inc.last_sent = now;\n                alert('critical', `⏰ NHẮC LẠI lần ${inc.reminders} – ${label(inc.node)}: YÊU CẦU bật bơm / mở van`,\n                    `Cống vẫn ở mức ĐỎ sau ${dur(now - inc.start)} mà chưa có xác nhận xử lý. Hiện tại ${r.data.L}%, dâng ${sign(r.data.v)} cm/phút.`,\n                    inc.node, inc.key);\n                log(`Nhắc lại yêu cầu vận hành ${inc.node} (lần ${inc.reminders})`);\n            }\n        }\n        break;\n    }\n    case 'ack': {\n        const by = msg.by || 'Người quản lý', src = msg.source || 'Dashboard';\n        const pending = Object.values(incidents).filter(i => !i.ack && (!msg.key || i.key === msg.key));\n        if (!pending.length) {\n            log(`Bấm xác nhận (${src}) nhưng không còn yêu cầu nào đang chờ`);\n        } else {\n            for (const inc of pending) {\n                inc.ack = true; inc.ack_at = now; inc.ack_by = by;\n                alert('info', `✅ ${by} đã xác nhận xử lý ${label(inc.node)}`,\n                    `Qua ${src} lúc ${hhmm(now)} – phản hồi sau ${dur(now - inc.start)}.`, inc.node);\n                log(`${by} xác nhận xử lý ${inc.node} qua ${src}, phản hồi sau ${dur(now - inc.start)}`);\n            }\n        }\n        break;\n    }\n    default:\n        return null;\n}\n\nconst spread = checkSpread();\nconst vals = Object.values(reg);\nconst worst = Math.max(0, ...vals.filter(r => r.online !== false).map(r => RANK[r.level] || 0));\nconst offline = vals.filter(r => r.online === false || r.stale).map(r => r.id);\nlet combined = spread ? '🌊 NGẬP ĐANG LAN RỘNG – cống đỏ và đường đã ngập'\n    : ['🟢 AN TOÀN', '🟡 CẦN THEO DÕI', '🔴 NGUY HIỂM'][worst];\nif (offline.length) combined += ' · ⚠️ mất kết nối: ' + offline.join(', ');\n\nconst open = Object.values(incidents);\nconst incText = !open.length ? 'Không có yêu cầu nào'\n    : open.map(i => `${label(i.node)}: bật bơm/mở van (từ ${hhmm(i.start)}) – ` +\n        (i.ack ? `✅ ${i.ack_by} đã xác nhận` : '⏳ chờ xác nhận' + (i.reminders ? `, đã nhắc ${i.reminders} lần` : ''))).join(' | ');\n\nflow.set('reg', reg);\nflow.set('incidents', incidents);\nconst state = {\n    ts: now, combined, worst: ['green', 'yellow', 'red'][worst], spread, lead_ms: flow.get('last_lead_ms') || null,\n    nodes: Object.fromEntries(vals.map(r => [r.id, {\n        kind: r.kind || kindOf(r.id) || null, level: r.level || null, online: r.online !== false,\n        stale: !!r.stale, last_seen: r.last_seen || null, data: r.data || null }])),\n    incidents: open.map(i => ({ key: i.key, node: i.node, start: i.start, ack: i.ack, ack_by: i.ack_by || null,\n        ack_at: i.ack_at || null, reminders: i.reminders, max_L: i.max_L || null }))\n};\nreturn [alerts.length ? alerts : null, { payload: combined }, { payload: incText }, logs.length ? logs : null,\n        { topic: 'flood/edge/state', payload: state, retain: true, qos: 0 }, closed.length ? closed : null];\n",
         "outputs": 6,
         "timeout": 0,
         "noerr": 0,
@@ -636,7 +603,8 @@
         "y": 260,
         "wires": [
             [
-                "fn_tg_out"
+                "mqtt_out_dyn",
+                "fn_alert_toast"
             ],
             [
                 "ui_text_combined"
@@ -652,6 +620,47 @@
             ],
             [
                 "mqtt_out_dyn"
+            ]
+        ]
+    },
+    {
+        "id": "fn_alert_toast",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Cảnh báo → thông báo dashboard",
+        "func": "// Cảnh báo quan trọng hiện thành thông báo nổi trên dashboard cục bộ của gateway.\nconst a = msg.payload || {};\nif (a.severity === 'info') return null;\nreturn { topic: a.title, payload: a.body };\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1180,
+        "y": 220,
+        "wires": [
+            [
+                "ui_toast"
+            ]
+        ]
+    },
+    {
+        "id": "fn_ai_alert",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Cảnh báo sớm AI → kênh cảnh báo",
+        "func": "// Cảnh báo sớm từ dịch vụ AI (đã giới hạn 1 lần / 3 phút) → cùng kênh cảnh báo flood/edge/alert.\nconst p = msg.payload || {};\nconst text = String(p.content || '').replace(/[*_]/g, '');\nif (!text) return null;\nreturn { topic: 'flood/edge/alert', qos: 1, retain: false,\n    payload: { ts: Date.now(), severity: 'warning', title: '🤖 Cảnh báo sớm (dự báo AI – thử nghiệm)',\n               body: text.split('\\n').filter(Boolean).slice(1).join(' ').slice(0, 300), node: null, key: null } };\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 1260,
+        "wires": [
+            [
+                "mqtt_out_dyn",
+                "fn_alert_toast"
             ]
         ]
     },
@@ -673,139 +682,6 @@
         "topic": "tick",
         "x": 680,
         "y": 340,
-        "wires": [
-            [
-                "fn_alert_engine"
-            ]
-        ]
-    },
-    {
-        "id": "fn_tg_out",
-        "type": "function",
-        "z": "tab_flood_main",
-        "name": "Lọc tin Telegram",
-        "func": "// Chặn tin khi chưa cấu hình TELEGRAM_CHAT_ID (tránh lỗi node telegram sender).\nconst p = msg.payload;\nif (!p || !p.chatId) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'Bỏ qua: chưa đặt TELEGRAM_CHAT_ID' });\n    return null;\n}\nnode.status({ fill: 'green', shape: 'dot', text: 'Gửi lúc ' + new Date().toLocaleTimeString('vi-VN', { hour12: false }) });\nreturn msg;\n",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 1180,
-        "y": 220,
-        "wires": [
-            [
-                "telegram_sender"
-            ]
-        ]
-    },
-    {
-        "id": "telegram_sender",
-        "type": "telegram sender",
-        "z": "tab_flood_main",
-        "name": "Gửi Telegram",
-        "bot": "telegram_bot_config",
-        "haserroroutput": false,
-        "outputs": 1,
-        "x": 1380,
-        "y": 220,
-        "wires": [
-            [
-                "debug_telegram"
-            ]
-        ]
-    },
-    {
-        "id": "debug_telegram",
-        "type": "debug",
-        "z": "tab_flood_main",
-        "name": "Telegram",
-        "active": false,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "true",
-        "targetType": "full",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 1560,
-        "y": 220,
-        "wires": []
-    },
-    {
-        "id": "tg_event_cb",
-        "type": "telegram event",
-        "z": "tab_flood_main",
-        "name": "Nút Xác nhận (callback)",
-        "bot": "telegram_bot_config",
-        "event": "callback_query",
-        "autoanswer": false,
-        "x": 180,
-        "y": 560,
-        "wires": [
-            [
-                "fn_tg_callback"
-            ]
-        ]
-    },
-    {
-        "id": "fn_tg_callback",
-        "type": "function",
-        "z": "tab_flood_main",
-        "name": "Xác nhận từ Telegram",
-        "func": "// Người quản lý bấm nút \"Đã xử lý\" trong tin nhắn Telegram (callback_data = \"ack:<mã sự cố>\").\n// Chỉ chấp nhận xác nhận từ chat đã cấu hình (TELEGRAM_CHAT_ID).\nconst p = msg.payload || {};\nconst data = String(p.content || '');\nif (!data.startsWith('ack:')) return null;\n\nconst allowed = String(global.get('telegram_chat_id') || '');\nif (allowed && String(p.chatId) !== allowed) {\n    node.warn('Bỏ qua xác nhận từ chat không được phép: ' + p.chatId);\n    return null;\n}\nconst from = (msg.originalMessage && msg.originalMessage.from) || p.from || {};\nconst by = [from.first_name, from.last_name].filter(Boolean).join(' ') || from.username || 'Người quản lý';\nreturn { topic: 'ack', key: data.slice(4), by, source: 'Telegram', cb: { chatId: p.chatId, id: p.callbackQueryId } };\n",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 420,
-        "y": 560,
-        "wires": [
-            [
-                "fn_alert_engine"
-            ]
-        ]
-    },
-    {
-        "id": "tg_cmd_status",
-        "type": "telegram command",
-        "z": "tab_flood_main",
-        "name": "/status",
-        "command": "/status",
-        "description": "Xem trạng thái các điểm đo",
-        "registercommand": true,
-        "language": "",
-        "scope": "default",
-        "bot": "telegram_bot_config",
-        "strict": false,
-        "hasresponse": false,
-        "useregex": false,
-        "removeregexcommand": false,
-        "outputs": 1,
-        "x": 150,
-        "y": 620,
-        "wires": [
-            [
-                "fn_tg_query"
-            ]
-        ]
-    },
-    {
-        "id": "fn_tg_query",
-        "type": "function",
-        "z": "tab_flood_main",
-        "name": "Lệnh /status",
-        "func": "// Lệnh /status: ai nhắn bot cũng xem được trạng thái (thông tin công khai cho người dân).\nconst p = msg.payload || {};\nif (!p.chatId) return null;\nreturn { topic: 'query', chatId: p.chatId };\n",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 420,
-        "y": 620,
         "wires": [
             [
                 "fn_alert_engine"
@@ -1289,131 +1165,6 @@
                 "ui_devices"
             ]
         ]
-    },
-    {
-        "id": "inj_thingspeak",
-        "type": "inject",
-        "z": "tab_flood_main",
-        "name": "Mỗi 15 s",
-        "props": [
-            {
-                "p": "topic",
-                "vt": "str"
-            }
-        ],
-        "repeat": "15",
-        "crontab": "",
-        "once": true,
-        "onceDelay": 15,
-        "topic": "",
-        "x": 130,
-        "y": 1040,
-        "wires": [
-            [
-                "fn_thingspeak"
-            ]
-        ]
-    },
-    {
-        "id": "fn_thingspeak",
-        "type": "function",
-        "z": "tab_flood_main",
-        "name": "Gộp dữ liệu → ThingSpeak",
-        "func": "// Gộp dữ liệu hai node vào MỘT lần cập nhật / 15 s (giới hạn kênh miễn phí của ThingSpeak).\n// field1 m cống (cm) · field2 L (%) · field3 v (cm/phút) · field4 h đường (cm)\n// field5 mức cống · field6 mức đường (0 xanh, 1 vàng, 2 đỏ)\nconst key = global.get('thingspeak_write_key');\nif (!key) { node.status({ fill: 'yellow', shape: 'ring', text: 'Chưa có THINGSPEAK_WRITE_API_KEY' }); return null; }\n\nconst reg = flow.get('reg') || {};\nconst c = reg.cong1, d = reg.duong1;\nconst code = { green: 0, yellow: 1, red: 2 };\nconst f = {};\nif (c && c.data) { f.field1 = c.data.m; f.field2 = c.data.L; f.field3 = c.data.v; f.field5 = code[c.level]; }\nif (d && d.data) { f.field4 = d.data.h; f.field6 = code[d.level]; }\nif (!Object.keys(f).length) return null;\n\nconst lastSeen = Math.max((c && c.last_seen) || 0, (d && d.last_seen) || 0);\nif (lastSeen <= (context.get('lastSeen') || 0)) {\n    node.status({ fill: 'grey', shape: 'ring', text: 'Không có dữ liệu mới' });\n    return null;\n}\ncontext.set('lastSeen', lastSeen);\n\nmsg.url = 'https://api.thingspeak.com/update';\nmsg.method = 'POST';\nmsg.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload = 'api_key=' + encodeURIComponent(key) +\n    Object.entries(f).map(([k, v]) => '&' + k + '=' + encodeURIComponent(v)).join('');\nnode.status({ fill: 'green', shape: 'dot', text: 'Gửi lúc ' + new Date().toLocaleTimeString('vi-VN', { hour12: false }) });\nreturn msg;\n",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 360,
-        "y": 1040,
-        "wires": [
-            [
-                "http_thingspeak"
-            ]
-        ]
-    },
-    {
-        "id": "http_thingspeak",
-        "type": "http request",
-        "z": "tab_flood_main",
-        "name": "POST ThingSpeak",
-        "method": "use",
-        "ret": "txt",
-        "paytoqs": "ignore",
-        "url": "",
-        "tls": "tls_thingspeak",
-        "persist": false,
-        "proxy": "",
-        "insecureHTTPParser": false,
-        "authType": "",
-        "senderr": false,
-        "headers": [],
-        "x": 580,
-        "y": 1040,
-        "wires": [
-            [
-                "debug_thingspeak"
-            ]
-        ]
-    },
-    {
-        "id": "debug_thingspeak",
-        "type": "debug",
-        "z": "tab_flood_main",
-        "name": "ThingSpeak",
-        "active": false,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "true",
-        "targetType": "full",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 780,
-        "y": 1040,
-        "wires": []
-    },
-    {
-        "id": "inject_init_globals",
-        "type": "inject",
-        "z": "tab_flood_main",
-        "name": "Khởi tạo biến (env)",
-        "props": [
-            {
-                "p": "topic",
-                "vt": "str"
-            }
-        ],
-        "repeat": "",
-        "crontab": "",
-        "once": true,
-        "onceDelay": 0.5,
-        "topic": "",
-        "x": 150,
-        "y": 1100,
-        "wires": [
-            [
-                "fn_init_globals"
-            ]
-        ]
-    },
-    {
-        "id": "fn_init_globals",
-        "type": "function",
-        "z": "tab_flood_main",
-        "name": "Đọc TELEGRAM_CHAT_ID, THINGSPEAK key",
-        "func": "// Đọc thông tin bí mật từ biến môi trường (start_all.ps1 nạp từ config/secrets.env).\nconst chat = env.get('TELEGRAM_CHAT_ID');\nconst key = env.get('THINGSPEAK_WRITE_API_KEY');\nglobal.set('telegram_chat_id', chat ? String(chat) : null);\nglobal.set('thingspeak_write_key', key || null);\nnode.status({\n    fill: chat && key ? 'green' : 'yellow', shape: 'dot',\n    text: `Telegram: ${chat ? 'OK' : 'thiếu chat id'} · ThingSpeak: ${key ? 'OK' : 'thiếu key'}`\n});\nreturn null;\n",
-        "outputs": 0,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 400,
-        "y": 1100,
-        "wires": []
     },
     {
         "id": "ui_gauge_fill",
