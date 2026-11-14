@@ -115,31 +115,28 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 
 ## 4. Sơ đồ kết nối
 
-### Node 1 — cong1 (Đo mực nước cống)
+Nhóm hiện có **1 ESP32**, nên dùng chế độ `MODE_DUAL`: một mạch gắn **2 cảm biến** và chạy **2 node logic**
+`cong1` + `duong1`. Mỗi node logic có kết nối MQTT, Last Will và cấu hình riêng, nên Node-RED và cloud
+vẫn thấy 2 node như khi dùng 2 mạch. Có thêm mạch thì chuyển sang `MODE_DRAIN` / `MODE_ROAD`, không phải sửa phía server.
 
-| Chân JSN-SR04T | Chân ESP32 | Ghi chú |
-|---|---|---|
-| VCC | 5V | Nguồn 5V |
-| GND | GND | Nối đất |
-| TRIG | GPIO 5 | Xung kích |
-| ECHO | GPIO 18 | Nhận tín hiệu |
+### Một ESP32 cho cả hai node (`MODE_DUAL`)
 
-### Node 2 — duong1 (Đo ngập đường + Cảnh báo)
+| Linh kiện | Chân linh kiện | Chân ESP32 | Ghi chú |
+|---|---|---|---|
+| Cảm biến 1 – **cống** | VCC / GND | 5V / GND | |
+| | TRIG | GPIO 5 | |
+| | ECHO | GPIO 18 | qua cầu chia áp 1 kΩ / 2 kΩ |
+| Cảm biến 2 – **đường** | VCC / GND | 5V / GND | |
+| | TRIG | GPIO 19 | |
+| | ECHO | GPIO 21 | qua cầu chia áp 1 kΩ / 2 kΩ |
+| LED xanh / vàng / đỏ | Anode → R220Ω | GPIO 26 / 27 / 14 | Cathode về GND |
+| Còi (+) / (−) | | GPIO 25 / GND | **không dùng GPIO 12** (chân strapping) |
 
-| Linh kiện | Chân linh kiện | Chân ESP32 |
-|---|---|---|
-| JSN-SR04T VCC | VCC | 5V |
-| JSN-SR04T GND | GND | GND |
-| JSN-SR04T TRIG | TRIG | GPIO 5 |
-| JSN-SR04T ECHO | ECHO | GPIO 18 |
-| LED Xanh lá | Anode → R220Ω | GPIO 26 |
-| LED Vàng | Anode → R220Ω | GPIO 27 |
-| LED Đỏ | Anode → R220Ω | GPIO 14 |
-| Buzzer (+) | | GPIO 25 (**không dùng GPIO 12** – chân strapping, làm ESP32 không khởi động) |
-| Buzzer (−) | | GND |
-| Tất cả Cathode LED | | GND |
+Khi dùng 2 mạch riêng (`MODE_DRAIN` / `MODE_ROAD`): mỗi mạch chỉ gắn cảm biến 1 (GPIO 5 / 18); mạch đường gắn thêm đèn và còi như trên.
 
-> **Lưu ý:** JSN-SR04T hoạt động với 5V. ECHO output cũng là 5V — dùng **bộ chia điện áp** (R1=1kΩ, R2=2kΩ) hoặc **level shifter** trước khi nối vào GPIO 18 (3.3V tolerant) của ESP32.
+> **Lưu ý:** JSN-SR04T chạy 5V, chân ECHO ra 5V — bắt buộc dùng **cầu chia áp** (R1 = 1 kΩ nối tiếp, R2 = 2 kΩ xuống GND)
+> hoặc level shifter trước khi vào ESP32 (3,3V). Hai cảm biến được đo lần lượt nên không nhiễu nhau,
+> nhưng nên đặt chúng cách nhau và không cùng hướng vào một mặt nước.
 
 ---
 
@@ -190,18 +187,18 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 
 #### 1.3 Cấu hình config.h
 
-Hai node dùng **chung một sketch** [`firmware/flood_node/flood_node.ino`](firmware/flood_node/flood_node.ino).
+Firmware [`firmware/flood_node/flood_node.ino`](firmware/flood_node/flood_node.ino) dùng chung cho mọi trường hợp.
 Sao chép `firmware/flood_node/config.example.h` thành `firmware/flood_node/config.h` (đã gitignore) và sửa:
 
 ```cpp
-#define NODE_ID     "cong1"         // hoặc "duong1"
-#define NODE_ROLE   ROLE_DRAIN      // ROLE_DRAIN = node cống, ROLE_ROAD = node đường
+#define NODE_MODE   MODE_DUAL       // 1 ESP32 chạy cả cong1 + duong1 (MODE_DRAIN / MODE_ROAD nếu có 2 mạch)
+#define DRAIN_ID    "cong1"
+#define ROAD_ID     "duong1"
 #define WIFI_SSID   "Ten_WiFi"
 #define WIFI_PASSWORD "Mat_khau"
-#define MQTT_SERVER "192.168.1.100" // IP laptop chạy Mosquitto
+#define MQTT_SERVER "192.168.1.100" // IP laptop chạy Mosquitto (xem bằng ipconfig)
 ```
 
-Nạp lần 1 cho mạch cống, sửa `NODE_ID`/`NODE_ROLE` rồi nạp lần 2 cho mạch đường.
 Các thông số lắp đặt (H, Hmax, d0, ngưỡng) chỉ là mặc định — sau khi lắp, vào dashboard
 **Quản lý thiết bị** để hiệu chuẩn và chỉnh từ xa, không cần nạp lại firmware.
 
@@ -294,7 +291,7 @@ Truy cập: **http://localhost:1880**
 
 ## 7. Bảng MQTT Topics
 
-Cấu trúc `flood/<mã node>/...` — thêm node mới chỉ cần đổi `NODE_ID`; Node-RED subscribe `flood/+/...` nên tự nhận.
+Cấu trúc `flood/<mã node>/...` — thêm node mới chỉ cần đặt mã node mới (`DRAIN_ID` / `ROAD_ID`); Node-RED subscribe `flood/+/...` nên tự nhận.
 
 | Topic | Hướng | Retain | Nội dung |
 |---|---|---|---|

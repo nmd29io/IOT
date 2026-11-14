@@ -102,8 +102,9 @@ Quay màn hình console và quay mô hình **cùng lúc** (2 thiết bị), ghé
 | Tốc độ dâng tính thế nào? | Trung bình trượt 5 mẫu, so với giá trị cách đây 1 phút: v = (m_tb − m_tb_1phút) / Δt. Cống 60% nhưng dâng 5 cm/phút → ĐỎ sớm hơn chờ 80%. |
 | Hysteresis để làm gì? | Lên ĐỎ khi h > 20, chỉ về VÀNG khi h < 15 → mực nước dao động quanh 20 cm không làm đèn nhấp nháy, không spam tin. |
 | Sao không tự bật bơm? | Bơm/van thuộc đơn vị quản lý, ảnh hưởng cả lưu vực; hệ thống cung cấp dữ liệu kịp thời và quy trình xác nhận có trách nhiệm (ai xác nhận, sau bao lâu). Tự động hoá vòng kín là hướng phát triển. |
+| Sao chỉ có 1 ESP32 mà nói 2 node? | Do giới hạn phần cứng, một ESP32 gắn 2 cảm biến và chạy **2 node logic**: mỗi node có kết nối MQTT, Last Will, cấu hình và hiệu chuẩn riêng. Phía gateway/cloud không phân biệt — thêm mạch thứ hai chỉ cần đổi `NODE_MODE`, không sửa server. Ngoài thực địa mỗi điểm đo là một mạch riêng. (Nói thẳng điều này, đừng giấu.) |
 | Bảo mật? | Mật khẩu + ACL trên broker cloud, HTTPS, mã quản trị, chỉ chat được cấu hình mới xác nhận; secrets ngoài git. Chưa TLS cho bridge – sẽ dùng cổng 8883. |
-| Thêm node mới? | Nạp firmware với `NODE_ID` mới; flow subscribe `flood/+/...` nên tự nhận, node tự hiện trong bảng thiết bị và trên web (thêm toạ độ vào `nodes.json`). |
+| Thêm node mới? | Nạp firmware với mã node mới (`DRAIN_ID`/`ROAD_ID`); flow subscribe `flood/+/...` nên tự nhận, node tự hiện trong bảng thiết bị và trên web (thêm toạ độ vào `nodes.json`). |
 | Dữ liệu dùng để làm gì về lâu dài? | Thống kê số sự cố, thời gian báo trước, thời gian phản hồi theo từng điểm → biết điểm nào cần nâng cấp cống trước (đầu tư đúng chỗ). |
 
 ---
@@ -143,6 +144,6 @@ Quay màn hình console và quay mô hình **cùng lúc** (2 thiết bị), ghé
 
 | Thành viên | Việc |
 |---|---|
-| Đức | Lắp mạch (còi sang **GPIO 25**), nạp `flood_node` cho 2 node, mô hình fomex, đo sai số cảm biến |
+| Đức | Lắp mạch 1 ESP32 + 2 cảm biến (`MODE_DUAL`, còi **GPIO 25**, cảm biến 2 ở GPIO 19/21), nạp `flood_node`, mô hình fomex, đo sai số cảm biến |
 | Huy | Token bot, chạy `start_all.bat`, thử đủ kịch bản mục 4, đo độ trễ Telegram, bridge lên cloud |
 | Vân Anh | Tạo VM + `docker compose up`, kiểm tra web trên 4G, báo cáo + slide, dựng video |
