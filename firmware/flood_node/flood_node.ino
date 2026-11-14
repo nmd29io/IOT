@@ -40,6 +40,13 @@
 #include <time.h>
 #include "config.h"   // sao chép từ config.example.h
 
+#ifndef TOPIC_PREFIX
+#define TOPIC_PREFIX ""         // Wokwi + broker công cộng: đặt tiền tố riêng, VD "nhom1uet-iot/"
+#endif
+#ifndef WIFI_CHANNEL
+#define WIFI_CHANNEL 0          // 0 = tự dò; Wokwi-GUEST dùng kênh 6 (kết nối nhanh hơn)
+#endif
+
 #if !defined(NODE_MODE) || (NODE_MODE != MODE_DRAIN && NODE_MODE != MODE_ROAD && NODE_MODE != MODE_DUAL)
 #error "Đặt NODE_MODE là MODE_DUAL, MODE_DRAIN hoặc MODE_ROAD trong config.h"
 #endif
@@ -453,7 +460,7 @@ static void networkLoop() {
             lastWifiTry = now;
             Serial.println("[WiFi] Đang kết nối lại…");
             WiFi.disconnect();
-            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+            WiFi.begin(WIFI_SSID, WIFI_PASSWORD, WIFI_CHANNEL);
         }
         return;
     }
@@ -476,7 +483,7 @@ static void initChannel(Channel& c, const char* id, Role role, uint8_t trig, uin
     c.id = id; c.role = role; c.trig = trig; c.echo = echo;
     pinMode(trig, OUTPUT);
     pinMode(echo, INPUT);
-    String base = String("flood/") + id + "/";
+    String base = String(TOPIC_PREFIX) + "flood/" + id + "/";
     c.tLevel = base + "level";   c.tStatus = base + "status"; c.tInfo = base + "info";
     c.tEvent = base + "event";   c.tConfig = base + "config"; c.tCmd = base + "cmd";
     c.tAlarm = base + "alarm/cmd";
@@ -517,7 +524,7 @@ void setup() {
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD, WIFI_CHANNEL);
     lastWifiTry = millis();
 }
 

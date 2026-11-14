@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "author": "Nhom 1 - INT3323",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-hc-sr04", "id": "us_cong", "top": -150, "left": -230, "attrs": { "distance": "60" } },
+    { "type": "wokwi-hc-sr04", "id": "us_duong", "top": 170, "left": -230, "attrs": { "distance": "50" } },
+    { "type": "wokwi-led", "id": "led_g", "top": -60, "left": 230, "attrs": { "color": "green" } },
+    { "type": "wokwi-led", "id": "led_y", "top": -60, "left": 280, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-led", "id": "led_r", "top": -60, "left": 330, "attrs": { "color": "red" } },
+    { "type": "wokwi-resistor", "id": "r_g", "top": 40, "left": 220, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_y", "top": 40, "left": 270, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_r", "top": 40, "left": 320, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-buzzer", "id": "bz", "top": 150, "left": 250, "attrs": { "volume": "0.2" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "us_cong:VCC", "esp:5V", "red", [] ],
+    [ "us_cong:GND", "esp:GND.1", "black", [] ],
+    [ "us_cong:TRIG", "esp:5", "orange", [] ],
+    [ "us_cong:ECHO", "esp:18", "purple", [] ],
+
+    [ "us_duong:VCC", "esp:5V", "red", [] ],
+    [ "us_duong:GND", "esp:GND.1", "black", [] ],
+    [ "us_duong:TRIG", "esp:19", "orange", [] ],
+    [ "us_duong:ECHO", "esp:21", "purple", [] ],
+
+    [ "esp:26", "r_g:1", "green", [] ],
+    [ "r_g:2", "led_g:A", "green", [] ],
+    [ "esp:27", "r_y:1", "gold", [] ],
+    [ "r_y:2", "led_y:A", "gold", [] ],
+    [ "esp:14", "r_r:1", "red", [] ],
+    [ "r_r:2", "led_r:A", "red", [] ],
+    [ "led_g:C", "esp:GND.2", "black", [] ],
+    [ "led_y:C", "esp:GND.2", "black", [] ],
+    [ "led_r:C", "esp:GND.2", "black", [] ],
+
+    [ "esp:25", "bz:2", "blue", [] ],
+    [ "bz:1", "esp:GND.3", "black", [] ]
+  ],
+  "dependencies": {}
+}

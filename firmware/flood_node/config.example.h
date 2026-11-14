@@ -56,7 +56,7 @@
 #define DEFAULT_H_CM        60.0f   // khoảng cách cảm biến → đáy ống (cm)
 #define DEFAULT_HMAX_CM     35.0f   // chiều sâu dùng để tính % đầy (cm)
 // Node đường: h = d0 - d
-#define DEFAULT_D0_CM       40.0f   // khoảng cách cảm biến → mặt khay khi khô (cm)
+#define DEFAULT_D0_CM       50.0f   // cảm biến → mặt đường khô (cm). Phải ≥ 20 (vùng mù) + độ ngập lớn nhất cần đo
 
 // Ngưỡng node đường (cm) — giá trị theo báo cáo; khi demo trên khay nông
 // nên quy đổi nhỏ lại (ví dụ 2 / 4 / 3 / 1.5) bằng form cấu hình trên dashboard.
