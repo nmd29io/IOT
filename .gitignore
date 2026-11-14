@@ -55,3 +55,6 @@ desktop.ini
 mosquitto/conf.d/*.conf
 cloud/.env
 cloud/server/data/
+nodered/.node-red/package-lock.json
+!mosquitto/conf.d/00-default.conf
+nodered/.node-red/.config.nodes.json
