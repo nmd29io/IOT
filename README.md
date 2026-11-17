@@ -46,6 +46,8 @@ Mọi phần mềm (firmware, logic Edge, server, web/mobile app) đều do nhó
 | **Cloud tự xây dựng** | VM: Mosquitto (mật khẩu + ACL) + server Node.js + SQLite + **web công khai (bản đồ ngập)** và **console quản lý** qua HTTPS — xem [cloud/README.md](cloud/README.md) |
 | App quản lý (PWA) | Cài lên màn hình chính điện thoại; nhận Web Push từ server của nhóm, kể cả khi app đang đóng |
 
+> 🔧 **Chạy thật khi demo (mạch ESP32 thật):** checklist từng bước ở [docs/CHAY_THAT_KHI_DEMO.md](docs/CHAY_THAT_KHI_DEMO.md).
+>
 > 📘 **Bảo vệ đề tài:** đối chiếu tiêu chí chấm, cách giải thích kiến trúc, kịch bản video và câu hỏi thường gặp ở [docs/HUONG_DAN_DEMO.md](docs/HUONG_DAN_DEMO.md).
 
 ---

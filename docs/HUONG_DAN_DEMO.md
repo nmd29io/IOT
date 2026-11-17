@@ -79,6 +79,8 @@ Quay màn hình console và quay mô hình **cùng lúc** (2 thiết bị), ghé
 
 ## 5. Checklist trước giờ demo
 
+> Hướng dẫn đầy đủ cho mạch thật (mạng, nạp firmware, hiệu chuẩn, kịch bản, xử lý sự cố): **[CHAY_THAT_KHI_DEMO.md](CHAY_THAT_KHI_DEMO.md)**.
+
 - [ ] VM cloud chạy, mở được `https://<IP>.sslip.io` bằng 4G (không dùng WiFi trường)
 - [ ] Laptop + 2 ESP32 dùng **hotspot điện thoại**; laptop có IP cố định trong `config.h`
 - [ ] `start_all.bat` → dashboard nội bộ OK; console cloud hiện **Gateway online**
