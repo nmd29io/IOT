@@ -58,7 +58,7 @@ function subscribeLocal() {
 }
 
 local.on('connect', () => { log('[LOCAL] Đã kết nối', CFG.local); if (remote.connected) subscribeLocal(); });
-local.on('error', e => log('[LOCAL]', e.message));
+local.on('error', e => log('[LOCAL] Lỗi:', e.message || e.code || (e.errors && e.errors[0] && e.errors[0].code) || String(e), '— Mosquitto đã chạy chưa?'));
 local.on('offline', () => log('[LOCAL] Mất kết nối Mosquitto cục bộ'));
 
 remote.on('connect', () => {

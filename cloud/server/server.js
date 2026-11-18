@@ -34,7 +34,7 @@ const CFG = {
     mqttUrl: process.env.MQTT_URL || 'mqtt://localhost:1883',
     mqttUser: process.env.MQTT_USER || undefined,
     mqttPass: process.env.MQTT_PASSWORD || undefined,
-    adminToken: process.env.ADMIN_TOKEN || '',
+    adminToken: (process.env.ADMIN_TOKEN || '').trim(),    // bỏ dấu cách/xuống dòng thừa khi dán vào Environment
     dbPath: process.env.DB_PATH || path.join(__dirname, 'data', 'flood.db'),
     sampleMs: 5000,          // lưu tối đa 1 mẫu / 5 s / node
     keepDays: 30
@@ -133,7 +133,7 @@ function broadcast(type, data, adminOnly = false) {
 
 // ─── MQTT ────────────────────────────────────────────────────────────────────
 const broker = CFG.embedded
-    ? require('./broker').createEmbeddedBroker({ edgePassword: process.env.EDGE_PASSWORD })
+    ? require('./broker').createEmbeddedBroker({ edgePassword: (process.env.EDGE_PASSWORD || '').trim() })
     : null;
 const mqttOpts = {
     username: CFG.mqttUser, password: CFG.mqttPass,
