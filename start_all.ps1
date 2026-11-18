@@ -74,6 +74,20 @@ if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
     Start-Process "http://localhost:1880/ui"
 }
 
+# 4. Gateway -> Cloud qua wss (Render.com hoac start_cloud_tunnel.bat). Chi chay khi da tao gateway\cloud_link\config.json
+#    (dung VM + Mosquitto bridge thi khong can buoc nay: xem mosquitto\conf.d\cloud-bridge.conf.example)
+$linkDir = Join-Path $baseDir "gateway\cloud_link"
+if (Test-Path (Join-Path $linkDir "config.json")) {
+    if (-not (Test-Path (Join-Path $linkDir "node_modules\mqtt"))) {
+        Write-Host "[+] Cai thu vien cho cloud_link lan dau..." -ForegroundColor Yellow
+        & npm.cmd install --prefix "$linkDir" --no-audit --no-fund
+    }
+    Write-Host "[+] Khoi dong ket noi Gateway -> Cloud (cloud_link)..." -ForegroundColor Green
+    Start-Process -FilePath "node.exe" -ArgumentList "`"$(Join-Path $linkDir 'cloud_link.js')`"" -WorkingDirectory $linkDir
+} else {
+    Write-Host "[+] Chua noi cloud qua wss (khong co gateway\cloud_link\config.json)" -ForegroundColor DarkGray
+}
+
 Write-Host ""
 if ($problems.Count -gt 0) {
     Write-Host "Can xu ly truoc khi demo:" -ForegroundColor Yellow

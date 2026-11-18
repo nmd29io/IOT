@@ -1,0 +1,7 @@
+{
+  "_ghi_chu": "Sao chép thành config.json (không commit). url = địa chỉ cloud + /mqtt (Render: wss://<tên>.onrender.com/mqtt; tunnel: xem start_cloud_tunnel.bat); password = EDGE_PASSWORD đặt trên cloud.",
+  "url": "wss://ten-service.onrender.com/mqtt",
+  "username": "edge",
+  "password": "doi-mat-khau-gateway",
+  "local": "mqtt://localhost:1883"
+}

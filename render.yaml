@@ -1,0 +1,22 @@
+# Render Blueprint — tầng Cloud (server + broker MQTT tích hợp + web/PWA). Xem cloud/README.md mục A.
+# Mật khẩu KHÔNG ghi ở đây: các biến sync:false được Render hỏi khi tạo, lưu trong Environment của service.
+services:
+  - type: web
+    name: flood-monitor
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./cloud/server/Dockerfile.embedded
+    dockerContext: ./cloud/server
+    healthCheckPath: /healthz
+    envVars:
+      - key: BROKER
+        value: embedded
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: EDGE_PASSWORD
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false

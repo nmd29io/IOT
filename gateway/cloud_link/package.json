@@ -1,0 +1,9 @@
+{
+  "name": "flood-gateway-cloud-link",
+  "version": "1.0.0",
+  "description": "Gateway ↔ Cloud: chuyển dữ liệu đã xử lý tại Edge lên cloud qua MQTT/WebSocket bảo mật (wss) và nhận lệnh flood/cloud/#",
+  "main": "cloud_link.js",
+  "private": true,
+  "scripts": { "start": "node cloud_link.js" },
+  "dependencies": { "mqtt": "5.10.3" }
+}

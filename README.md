@@ -43,7 +43,7 @@ Mọi phần mềm (firmware, logic Edge, server, web/mobile app) đều do nhó
 | Quản lý thiết bị | Heartbeat (RSSI, uptime, lỗi đo, fw), Last Will, watchdog 30 s |
 | Cấu hình & hiệu chuẩn từ xa | Đổi ngưỡng / chu kỳ / kích thước lắp đặt, hiệu chuẩn d0/H từ dashboard; node lưu NVS |
 | Dashboard | 2 tab: Giám sát & Quản lý thiết bị |
-| **Cloud tự xây dựng** | VM: Mosquitto (mật khẩu + ACL) + server Node.js + SQLite + **web công khai (bản đồ ngập)** và **console quản lý** qua HTTPS — xem [cloud/README.md](cloud/README.md) |
+| **Cloud tự xây dựng** | Render.com (Docker): server Node.js có broker MQTT tích hợp (mật khẩu + ACL) + SQLite + **web công khai (bản đồ ngập)** và **console quản lý** qua HTTPS — xem [cloud/README.md](cloud/README.md) |
 | App quản lý (PWA) | Cài lên màn hình chính điện thoại; nhận Web Push từ server của nhóm, kể cả khi app đang đóng |
 
 > 🔧 **Chạy thật khi demo (mạch ESP32 thật):** checklist từng bước ở [docs/CHAY_THAT_KHI_DEMO.md](docs/CHAY_THAT_KHI_DEMO.md).
@@ -58,7 +58,7 @@ Mọi phần mềm (firmware, logic Edge, server, web/mobile app) đều do nhó
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     TẦNG 4 — CLOUD                                       │
 │          ┌───────────────┐          ┌──────────────────┐                 │
-│          │   Cloud VM    │          │  App quản lý PWA │                 │
+│          │ Render (cloud)│          │  App quản lý PWA │                 │
 │          │ server + DB   │          │   (Web Push)     │                 │
 │          └───────┬───────┘          └────────┬─────────┘                 │
 └──────────────────┼──────────────────────────┼─────────────────────────── ┘
@@ -163,7 +163,7 @@ Khi dùng 2 mạch riêng (`MODE_DRAIN` / `MODE_ROAD`): mỗi mạch chỉ gắn
 
 ### Tài khoản Cloud
 
-- **Một máy ảo cloud miễn phí** (Oracle Cloud / Google Cloud) cho tầng Cloud — xem [cloud/README.md](cloud/README.md)
+- **Tài khoản Render.com** (gói free) cho tầng Cloud — hoặc VPS/máy ảo, hoặc dự phòng `start_cloud_tunnel.bat`; xem [cloud/README.md](cloud/README.md)
 
 ---
 
@@ -260,8 +260,10 @@ Truy cập: **http://localhost:1880**
 
 ### Bước 4 — Triển khai Cloud & cài app trên điện thoại
 
-1. Làm theo [cloud/README.md](cloud/README.md): tạo VM, `docker compose up -d --build`, bật bridge `mosquitto/conf.d/cloud-bridge.conf`.
-2. Trên điện thoại mở `https://<IP>.sslip.io/admin` → đăng nhập → **📲 Cài ứng dụng** → **🔔 Bật thông báo**.
+1. Làm theo [cloud/README.md](cloud/README.md) mục A: tạo service Render (mật khẩu khai trong *Environment*), tạo `gateway/cloud_link/config.json` rồi `start_all.bat`.
+   (Không dùng được Render: mục C — `start_cloud_tunnel.bat`.)
+   (Có VPS thì dùng mục B: `docker compose up -d --build` + bridge `mosquitto/conf.d/cloud-bridge.conf`.)
+2. Trên điện thoại mở `https://<tên>.onrender.com/admin` → đăng nhập → **📲 Cài ứng dụng** → **🔔 Bật thông báo**.
 3. Khi cống lên ĐỎ, điện thoại nhận thông báo có nút **✅ Đã xử lý**.
 
 ---
@@ -279,10 +281,10 @@ Cấu trúc `flood/<mã node>/...` — thêm node mới chỉ cần đặt mã n
 | `flood/<id>/config` | Edge → Node | Có | Cấu hình từ xa (chỉ cần các khoá muốn đổi): `H, Hmax` (cống) · `d0, t_yellow, t_red, t_red_low, t_yellow_low, stable_s` (đường) · `period_s` |
 | `flood/<id>/cmd` | Edge → Node | Không | `{"cmd":"calibrate"}` (đo lại H khi cống rỗng / d0 khi đường khô), `report`, `reboot` |
 | `flood/duong1/alarm/cmd` | Edge → Node | Không | `off` (tắt còi) / `on` (bật lại còi) |
-| `flood/edge/state` | Edge → Cloud (bridge) | Có | Trạng thái đã xử lý: mức từng node, sự cố đang mở, ngập lan rộng |
+| `flood/edge/state` | Edge → Cloud (cloud_link / bridge) | Có | Trạng thái đã xử lý: mức từng node, sự cố đang mở, ngập lan rộng |
 | `flood/edge/log`, `flood/edge/incident` | Edge → Cloud | Không | Nhật ký; sự cố đã đóng (thời lượng, phản hồi, báo trước) |
 | `flood/edge/alert` | Edge → Cloud | Không | Cảnh báo `{severity, title, body, node, key}` → cloud đẩy Web Push tới điện thoại |
-| `flood/edge/bridge` | Bridge → Cloud | Có | `1`/`0` – gateway kết nối cloud (Last Will của bridge) |
+| `flood/edge/bridge` | Gateway → Cloud | Có | `1`/`0` – gateway kết nối cloud (Last Will của cloud_link / bridge) |
 | `flood/cloud/ack`, `flood/cloud/config/<id>`, `flood/cloud/cmd/<id>`, `flood/cloud/alarm/<id>` | Cloud → Edge | Không | Lệnh từ Web console; gateway kiểm duyệt rồi mới chuyển xuống node |
 | `flood/ai/prediction` | ML service → Edge | Không | Kết quả dự báo AI |
 | `flood/weather/radar` | Simulator → ML | Không | Mưa mô phỏng (chỉ dùng khi test) |
@@ -328,9 +330,13 @@ PRoject/
 ├── firmware/flood_node/
 │   ├── flood_node.ino              # Firmware dùng chung cho mọi node (chọn vai trò trong config.h)
 │   └── config.example.h            # Mẫu cấu hình → sao chép thành config.h (không commit)
-├── cloud/                          # Tầng Cloud tự xây dựng (triển khai trên VM bằng docker compose)
-│   ├── docker-compose.yml, Caddyfile, .env.example, mosquitto/
-│   └── server/                     # server.js (MQTT→SQLite→REST/WebSocket) + public/ (web app)
+├── cloud/                          # Tầng Cloud tự xây dựng
+│   ├── server/Dockerfile.embedded  # Image cho Render (broker tích hợp); render.yaml ở gốc repo
+│   ├── docker-compose.yml, Caddyfile, .env.example, mosquitto/   # Cách B: VM/VPS
+│   └── server/                     # server.js (MQTT→SQLite→REST/WebSocket), broker.js (MQTT qua wss) + public/ (web app)
+├── gateway/cloud_link/             # Gateway → cloud qua wss (thay Mosquitto bridge khi cloud chỉ mở HTTPS)
+├── render.yaml                     # Render Blueprint (không chứa mật khẩu)
+├── start_cloud_tunnel.bat          # Dự phòng: server trên laptop + Cloudflare Tunnel
 ├── docs/HUONG_DAN_DEMO.md          # Đối chiếu tiêu chí, kịch bản demo, Q&A
 ├── mosquitto/
 │   ├── mosquitto.conf              # Cấu hình Mosquitto broker (gateway)
@@ -388,9 +394,9 @@ nút hiệu chuẩn, tắt/bật còi, và **Ctrl+C để thấy hệ thống b�
 - Kiểm tra payload là JSON hợp lệ bằng MQTT Explorer
 
 ### Không nhận được thông báo trên điện thoại
-- Phải mở app qua **HTTPS** (`https://<IP>.sslip.io/admin`), không dùng `http://IP`
+- Phải mở app qua **HTTPS** (`https://<tên>.onrender.com/admin`), không dùng `http://`
 - Android: Chrome → cho phép thông báo; iPhone: thêm vào màn hình chính rồi mở từ đó (iOS 16.4+)
-- Console → **Gửi thử**; kiểm tra gateway đang online (bridge chạy) vì cảnh báo xuất phát từ gateway
+- Console → **Gửi thử**; kiểm tra gateway đang online (cửa sổ `cloud_link` báo đã kết nối) vì cảnh báo xuất phát từ gateway
 
 ---
 

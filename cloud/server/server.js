@@ -1,7 +1,9 @@
 /**
  * Cloud server — Hệ thống IoT giám sát & cảnh báo ngập (Stage 4: Data Center / Cloud)
  *
- *  Gateway (Node-RED) ──MQTT bridge──▶ Mosquitto (cloud) ──▶ server.js ──▶ SQLite
+ *  Gateway (Node-RED) ──MQTT bridge──▶ Mosquitto (cloud) ──▶ server.js ──▶ SQLite        (VM: docker compose)
+ *  Gateway (cloud_link.js) ──wss://…/mqtt──▶ broker tích hợp (broker.js) ──▶ server.js   (BROKER=embedded:
+ *                                                                        Render.com / Cloudflare Tunnel — chỉ có HTTPS)
  *                                                              │
  *                                       REST API + WebSocket ◀─┴─▶ Web app (public/)
  *
@@ -28,6 +30,7 @@ const webpush = require('web-push');
 
 const CFG = {
     port: Number(process.env.PORT) || 8080,
+    embedded: (process.env.BROKER || '').toLowerCase() === 'embedded',
     mqttUrl: process.env.MQTT_URL || 'mqtt://localhost:1883',
     mqttUser: process.env.MQTT_USER || undefined,
     mqttPass: process.env.MQTT_PASSWORD || undefined,
@@ -129,13 +132,19 @@ function broadcast(type, data, adminOnly = false) {
 }
 
 // ─── MQTT ────────────────────────────────────────────────────────────────────
-const client = mqtt.connect(CFG.mqttUrl, {
+const broker = CFG.embedded
+    ? require('./broker').createEmbeddedBroker({ edgePassword: process.env.EDGE_PASSWORD })
+    : null;
+const mqttOpts = {
     username: CFG.mqttUser, password: CFG.mqttPass,
     clientId: 'flood-cloud-server-' + crypto.randomBytes(3).toString('hex'),
     reconnectPeriod: 3000
-});
+};
+const client = broker                                // luồng nội bộ tới broker tích hợp, không qua mạng
+    ? new mqtt.MqttClient(() => broker.localStream(), { ...mqttOpts, ...broker.serverAuth })
+    : mqtt.connect(CFG.mqttUrl, mqttOpts);
 client.on('connect', () => {
-    console.log('[MQTT] Đã kết nối', CFG.mqttUrl);
+    console.log('[MQTT] Đã kết nối', broker ? 'broker tích hợp (wss://<host>/mqtt cho gateway)' : CFG.mqttUrl);
     client.subscribe(['flood/edge/#', 'flood/+/info', 'flood/+/status', 'flood/ai/prediction'], { qos: 1 });
 });
 client.on('error', e => console.error('[MQTT]', e.message));
@@ -340,11 +349,20 @@ app.post('/api/push/ack', (req, res) => {
     publish('flood/cloud/ack', { key, by: row.name + ' (thông báo)' }, res, 'Đã gửi xác nhận');
 });
 
-app.get('/healthz', (req, res) => res.json({ ok: true, mqtt: client.connected, gateway: gatewayStatus() }));
+app.get('/healthz', (req, res) => res.json({ ok: true, mqtt: client.connected, broker: broker ? 'embedded' : 'external', gateway: gatewayStatus() }));
 
 // ─── Khởi động ───────────────────────────────────────────────────────────────
 const server = http.createServer(app);
-wss = new WebSocketServer({ server, path: '/ws' });
+wss = new WebSocketServer({ noServer: true });
+const mqttWss = broker ? new WebSocketServer({ noServer: true }) : null;
+if (mqttWss) mqttWss.on('connection', ws => broker.handleWebSocket(ws));
+// Một cổng HTTP cho cả hai WebSocket: /ws (web app) và /mqtt (gateway, chỉ khi BROKER=embedded)
+server.on('upgrade', (req, socket, head) => {
+    const p = (req.url || '').split('?')[0];
+    const target = p === '/ws' ? wss : (p === '/mqtt' && mqttWss) ? mqttWss : null;
+    if (!target) { socket.write('HTTP/1.1 404 Not Found\r\n\r\n'); return socket.destroy(); }
+    target.handleUpgrade(req, socket, head, ws => target.emit('connection', ws, req));
+});
 wss.on('connection', ws => {
     ws.isAdmin = false;
     ws.on('message', raw => {                         // client gửi {"auth":"<token>"} để nhận cả nhật ký

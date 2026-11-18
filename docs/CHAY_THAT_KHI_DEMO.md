@@ -54,9 +54,9 @@ WiFi trường / quán thường chặn các thiết bị nói chuyện với nh
   Nếu còn file này, dữ liệu ảo từ Wokwi có thể lẫn vào dữ liệu thật.
 
 ### A5. Cloud và app điện thoại — Vân Anh
-- [ ] Dựng máy ảo theo [cloud/README.md](../cloud/README.md) → `docker compose up -d --build`.
-- [ ] Laptop: sao chép `mosquitto\conf.d\cloud-bridge.conf.example` → `cloud-bridge.conf`, điền IP máy ảo + `EDGE_PASSWORD`, chạy lại `start_all.bat`.
-- [ ] Điện thoại người quản lý: mở `https://<IP>.sslip.io/admin` → đăng nhập → **📲 Cài ứng dụng** → **🔔 Bật thông báo** → **Gửi thử** (phải rung).
+- [ ] Tạo service trên Render theo [cloud/README.md](../cloud/README.md) mục A (mật khẩu khai trong *Environment* của Render). Render đòi thẻ → dùng mục C: `start_cloud_tunnel.bat`.
+- [ ] Laptop: sao chép `gateway\cloud_link\config.example.json` → `config.json`, điền `wss://<tên>.onrender.com/mqtt` + `EDGE_PASSWORD`, chạy lại `start_all.bat` → cửa sổ `cloud_link` báo `[CLOUD] Đã kết nối`.
+- [ ] Điện thoại người quản lý: mở `https://<tên>.onrender.com/admin` → đăng nhập → **📲 Cài ứng dụng** → **🔔 Bật thông báo** → **Gửi thử** (phải rung).
       iPhone: Safari → Chia sẻ → *Thêm vào MH chính*, mở app từ màn hình chính rồi mới bật thông báo (iOS 16.4+).
 
 ### A6. Hiệu chuẩn trên mô hình thật
@@ -73,6 +73,7 @@ Trên tab **Quản lý thiết bị** (dashboard laptop hoặc app):
 ## B. Trong buổi demo
 
 ### B1. Khởi động (5 phút trước giờ)
+- [ ] Mở `https://<tên>.onrender.com` một lần cho service thức dậy (nếu đang ngủ mất ~1 phút) — làm trước 30 phút để có biểu đồ lịch sử.
 - [ ] Bật hotspot → cắm nguồn ESP32 → chạy `start_all.bat` trên laptop.
 - [ ] Dashboard laptop (`http://localhost:1880/ui`): cả `cong1` và `duong1` **ONLINE**.
 - [ ] App điện thoại: **Gateway online**, thấy số đo cập nhật.
@@ -87,7 +88,7 @@ Trên tab **Quản lý thiết bị** (dashboard laptop hoặc app):
 | 4 | Đưa tay qua cảm biến đường 2–3 giây | **Không** đổi màu đèn (chống báo sai) |
 | 5 | Tắt hotspot khi đang ngập | **Đèn và còi vẫn chạy**; app báo mất kết nối. Bật lại hotspot → tự kết nối lại |
 | 6 | Đổi ngưỡng / hiệu chuẩn từ app trên 4G | Nhật ký: "duong1: đã áp dụng cấu hình mới" |
-| 7 | Mở `https://<IP>.sslip.io` trên điện thoại giám khảo | Bản đồ ngập công khai |
+| 7 | Mở `https://<tên>.onrender.com` trên điện thoại giám khảo | Bản đồ ngập công khai |
 
 ### B3. Kết thúc
 - [ ] Rút nước → hệ thống về XANH, app có **tổng kết sự cố** (kéo dài bao lâu, ai xác nhận, sau bao lâu).
@@ -118,7 +119,8 @@ Trên tab **Quản lý thiết bị** (dashboard laptop hoặc app):
 | Số đo nhảy lung tung hoặc "lỗi đo" tăng | Cảm biến lệch góc, gần hơn 20 cm, thiếu cầu chia áp, dây ECHO lỏng |
 | Đèn đổi màu chậm | Do thời gian ổn định (20 s) — chủ ý để chống báo sai; hạ xuống 10 s khi demo |
 | Dashboard không có số liệu | `mosquitto_sub -t "flood/#" -v` xem node có gửi không; kiểm tra đã xoá `wokwi-bridge.conf` |
-| Điện thoại không nhận thông báo | Phải mở qua **https**; đã bật thông báo; gateway đang online (bridge cloud chạy) |
+| Điện thoại không nhận thông báo | Phải mở qua **https**; đã bật thông báo; gateway đang online (cửa sổ `cloud_link` báo đã kết nối) |
+| `cloud_link` báo lỗi kết nối | Service đang ngủ/đang build → mở trang web chờ ~1 phút; sai `EDGE_PASSWORD`; url phải là `wss://…/mqtt` |
 | Mất Internet tại phòng demo | ESP32 + laptop + đèn/còi + dashboard cục bộ vẫn chạy đủ; chỉ mất cloud và thông báo đẩy → dùng video quay sẵn phần app |
 
 ## E. Phương án dự phòng

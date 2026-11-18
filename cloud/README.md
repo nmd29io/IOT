@@ -43,13 +43,74 @@ ESP32 node ──WiFi/MQTT──▶ GATEWAY (laptop: Mosquitto + Node-RED Edge)
 
 Quyền quản trị: header `x-admin-token: <ADMIN_TOKEN>`.
 
-## Triển khai lên máy ảo (≈ 30 phút)
+## Các cách triển khai
 
-**1. Tạo VM miễn phí** — một trong hai:
-- Oracle Cloud Free Tier: VM.Standard.E2.1.Micro hoặc Ampere A1, Ubuntu 22.04/24.04
-- Google Cloud: e2-micro (us-west1 / us-central1 / us-east1 miễn phí), Ubuntu
+| | **A. Render.com** (cách chính) | **B. Máy ảo / VPS** | **C. Cloudflare Tunnel** (dự phòng) |
+|---|---|---|---|
+| Chi phí, thẻ | Gói free, không cần thẻ (theo trang Render) | Cần thẻ quốc tế hoặc thuê VPS | Miễn phí, không tài khoản |
+| Server chạy ở | Cloud (Render, Singapore) | Cloud (VM) | **Laptop của nhóm** |
+| Broker MQTT trên cloud | Tích hợp trong server (`broker.js`, aedes), `BROKER=embedded` | Mosquitto riêng (`docker-compose.yml`) | Tích hợp (như A) |
+| Gateway nối lên bằng | `gateway/cloud_link` — MQTT qua **wss://…/mqtt** (cổng 443, TLS) | Mosquitto bridge, cổng 1883 | `cloud_link` (ws trong LAN hoặc wss qua tunnel) |
+| Phân quyền | Tài khoản `edge` + ACL trong `broker.js` (giống file `acl`) | Mật khẩu + file `acl` | Như A |
+| Địa chỉ web | Cố định `https://<tên>.onrender.com` | Cố định | **Đổi mỗi lần chạy** |
+| Dữ liệu | Mất khi service khởi động lại | Lưu lâu dài | Lưu trên laptop |
 
-Mở cổng vào (firewall / security list): **22, 80, 443, 1883**.
+Cả ba dùng chung một `server.js` và web app; cloud không bao giờ ra lệnh thẳng cho node mà chỉ gửi vào `flood/cloud/#`
+để gateway kiểm duyệt. **Không có mật khẩu nào nằm trong repo**: A khai trong *Environment* của Render,
+B trong `cloud/.env`, C trong `cloud/tunnel.env` (cả hai đều bị `.gitignore`).
+
+## A. Triển khai lên Render.com (≈ 15 phút)
+
+```
+ESP32 ─MQTT─▶ Laptop: Mosquitto + Node-RED + cloud_link.js ──wss://<tên>.onrender.com/mqtt──▶ Render: server.js
+                                                                                              (broker tích hợp + SQLite + web/PWA)
+                                                                                                   ▲ điện thoại (4G)
+```
+Render build từ GitHub theo `render.yaml` (gốc repo) và `cloud/server/Dockerfile.embedded`.
+
+**0. Chuẩn bị mật khẩu** (PowerShell, chạy trên máy, không gửi lên nhóm chat):
+```powershell
+-join ((48..57)+(65..90)+(97..122) | Get-Random -Count 24 | % {[char]$_})      # chạy 2 lần: ADMIN_TOKEN, EDGE_PASSWORD
+cd cloud\server; node -e "console.log(require('web-push').generateVAPIDKeys())"   # VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
+```
+
+**1. Tạo service**
+- Đăng ký render.com (đăng nhập bằng GitHub). Nếu bị đòi thẻ → dùng cách C.
+- Đã push code lên GitHub → **New + → Blueprint** → chọn repo, nhánh `feature/iot-platform-v2` → Render đọc `render.yaml`
+  và hỏi 4 biến `ADMIN_TOKEN`, `EDGE_PASSWORD`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` → điền → **Apply**.
+- Hoặc tạo tay: **New + → Web Service** → repo → *Language* **Docker**, *Instance type* **Free**,
+  *Dockerfile Path* `./cloud/server/Dockerfile.embedded`, *Docker Build Context* `./cloud/server`,
+  *Health Check Path* `/healthz`, mục **Environment** thêm 4 biến trên và `BROKER=embedded`.
+- Chờ build (3–5 phút). Mở `https://<tên>.onrender.com/healthz` → thấy `"broker":"embedded"` là được.
+- Repo private: Render cần được cấp quyền đọc repo (chủ repo cài Render GitHub App), hoặc dùng repo/fork public.
+
+**2. Nối gateway (laptop) lên Render**
+```bat
+copy gateway\cloud_link\config.example.json gateway\cloud_link\config.json
+:: sửa "url": "wss://<tên>.onrender.com/mqtt", "password": <EDGE_PASSWORD>
+start_all.bat
+```
+Cửa sổ `cloud_link` hiện `[CLOUD] Đã kết nối`. Trang quản trị hiện **Gateway online**; đóng cửa sổ `cloud_link`
+→ trang quản trị báo **mất kết nối** (Last Will).
+
+**3. Điện thoại:** mở `https://<tên>.onrender.com/admin` → đăng nhập → **📲 Cài ứng dụng** → **🔔 Bật thông báo** →
+**Gửi thử**. Mỗi lần mở app, thiết bị tự đăng ký lại với server, nên service khởi động lại cũng không phải bật lại thông báo.
+
+**Lưu ý:** gói free **ngủ sau 15 phút không có truy cập** (đang có gateway gửi qua WebSocket thì không ngủ). Trước giờ demo
+mở trang một lần (thức dậy ≈ 1 phút) rồi chạy `start_all.bat`; chạy trước khoảng 30 phút để có biểu đồ lịch sử
+(dữ liệu bắt đầu lại sau mỗi lần service khởi động lại). Sửa code server → push lên GitHub, Render tự build lại.
+
+## B. Triển khai lên máy ảo (≈ 30 phút)
+
+**1. Tạo VM miễn phí** — một trong các cách:
+- **Azure for Students** (không cần thẻ, nhưng email VNU của nhóm đã bị từ chối — thử email thành viên khác): đăng ký tại azure.microsoft.com/free/students
+  bằng email trường (`@vnu.edu.vn`), nhận 100 USD dùng 12 tháng. Tạo *Virtual machine* → Ubuntu 24.04,
+  cỡ **B1s** hoặc **B2ats v2**, xác thực bằng SSH key hoặc mật khẩu, mục *Networking* mở cổng 22, 80, 443 (cổng 1883
+  thêm sau ở *Network settings → Create port rule → Inbound*).
+- Oracle Cloud Free Tier / Google Cloud e2-micro: cần thẻ Visa/Master quốc tế để xác minh (thẻ ATM nội địa thường bị từ chối).
+- VPS giá rẻ trong nước (~50–100 nghìn đ/tháng, 1 vCPU 1 GB RAM, Ubuntu) — làm theo các bước dưới y hệt.
+
+Mở cổng vào (firewall / security list / network security group): **22, 80, 443, 1883**.
 Oracle Ubuntu còn chặn bằng iptables trong máy — chạy thêm:
 ```bash
 sudo iptables -I INPUT -p tcp -m multiport --dports 80,443,1883 -j ACCEPT && sudo netfilter-persistent save
@@ -79,6 +140,23 @@ start_all.bat
 ```
 Kiểm tra: console quản lý hiện **Gateway online**; tắt Mosquitto trên laptop → sau ≤ 60 s hiện **mất kết nối**.
 
+## C. Dự phòng: Cloudflare Tunnel (server chạy trên laptop)
+
+Dùng khi Render đòi thẻ hoặc gặp sự cố đúng hôm demo. Khi trình bày nói đúng: *"server tự host, truy cập từ xa qua
+Cloudflare Tunnel"* — không gọi là triển khai cloud.
+
+```bat
+start_cloud_tunnel.bat            :: laptop B làm "cloud" (khuyên dùng: gateway và server tách hai máy)
+start_cloud_tunnel.bat -Local     :: gateway và server cùng một laptop
+```
+Script tự cài `cloudflared` (winget) nếu chưa có, tự tạo mật khẩu vào `cloud\tunnel.env`, chạy server ở chế độ broker
+tích hợp, mở tunnel rồi in ra:
+- địa chỉ `https://<ngẫu-nhiên>.trycloudflare.com` (và `/admin`) cho điện thoại;
+- địa chỉ cho `gateway\cloud_link\config.json` của laptop gateway: `ws://<IP laptop B>:8080/mqtt` khi cùng hotspot
+  (ổn định hơn), hoặc `wss://<ngẫu-nhiên>.trycloudflare.com/mqtt` qua Internet; `password` = `EDGE_PASSWORD` trong `cloud\tunnel.env`.
+
+Địa chỉ tunnel **đổi mỗi lần chạy** → phải cài lại app và bật lại thông báo trên điện thoại.
+
 ## Chạy thử trên máy cá nhân (không cần VM)
 
 ```bash
@@ -90,6 +168,8 @@ Mở http://localhost:8080 và http://localhost:8080/admin. Khi chạy chung m�
 Yêu cầu Node.js ≥ 22.5 (dùng SQLite tích hợp `node:sqlite`).
 
 ## Giới hạn (nêu trung thực trong báo cáo)
-- Bridge MQTT cổng 1883 có mật khẩu + ACL nhưng **chưa mã hoá TLS**; web đã qua HTTPS. Bước tiếp theo: bridge qua 8883 với TLS.
+- Cách A (Render free): dữ liệu lưu trong `/tmp`, mất khi service khởi động lại; service ngủ khi 15 phút không có truy cập.
+  Bước tiếp theo: gói trả phí có ổ đĩa / VPS, hoặc cơ sở dữ liệu cloud.
+- Cách B: bridge MQTT cổng 1883 có mật khẩu + ACL nhưng **chưa mã hoá TLS** (cách A đi qua wss/TLS); web đã qua HTTPS.
 - Một mã quản trị dùng chung, chưa có tài khoản riêng từng người.
 - Vị trí trên bản đồ là minh hoạ.

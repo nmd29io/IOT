@@ -292,6 +292,21 @@ $('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prom
 if (!/iPhone|iPad/.test(navigator.userAgent)) $('iosHint').classList.add('hidden');
 
 const b64ToBytes = s => { const p = '='.repeat((4 - s.length % 4) % 4); const r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); };
+// Server có thể khởi động lại với ổ đĩa trống (Hugging Face miễn phí) → mỗi lần mở app, gửi lại đăng ký của thiết bị;
+// nếu khoá VAPID của server đã đổi thì đăng ký mới. Người dùng không phải bấm lại "Bật thông báo".
+let synced = false;
+async function resync(sub) {
+    synced = true;
+    const { publicKey } = await api('api/push/key');
+    const cur = sub.options && sub.options.applicationServerKey;
+    const same = cur && btoa(String.fromCharCode(...new Uint8Array(cur))) === btoa(String.fromCharCode(...b64ToBytes(publicKey)));
+    if (cur && !same) {
+        await sub.unsubscribe();
+        sub = await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+    }
+    await authed('api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON(), name: WHO } });
+    return sub;
+}
 async function pushState() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
         $('pushBtn').disabled = true;
@@ -300,7 +315,8 @@ async function pushState() {
         return;
     }
     swReg = await navigator.serviceWorker.register('/sw.js');
-    const sub = await swReg.pushManager.getSubscription();
+    let sub = await swReg.pushManager.getSubscription();
+    if (sub && !synced) await resync(sub).then(s => { sub = s; }).catch(() => {});
     $('pushBtn').textContent = sub ? '🔕 Tắt thông báo trên thiết bị này' : '🔔 Bật thông báo trên thiết bị này';
     $('pushTest').classList.toggle('hidden', !sub);
     $('pushStatus').textContent = sub ? 'Thiết bị này đang nhận cảnh báo.' : (Notification.permission === 'denied' ? 'Thông báo đang bị chặn trong cài đặt trình duyệt.' : '');
