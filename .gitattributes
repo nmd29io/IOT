@@ -1,2 +1,7 @@
 # File chạy trên Linux (VM cloud, container) luôn dùng LF
 cloud/** text eol=lf
+# Ảnh / file nhị phân: không bao giờ đổi xuống dòng
+*.png binary
+*.jpg binary
+*.ico binary
+*.joblib binary

@@ -19,6 +19,7 @@ notification_topic flood/edge/bridge
 topic flood/edge/state out 0
 topic flood/edge/log out 1
 topic flood/edge/incident out 1
+topic flood/edge/alert out 1
 topic flood/+/info out 1
 topic flood/+/status out 1
 topic flood/ai/prediction out 0

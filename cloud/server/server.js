@@ -1,7 +1,9 @@
 /**
  * Cloud server — Hệ thống IoT giám sát & cảnh báo ngập (Stage 4: Data Center / Cloud)
  *
- *  Gateway (Node-RED) ──MQTT bridge──▶ Mosquitto (cloud) ──▶ server.js ──▶ SQLite
+ *  Gateway (Node-RED) ──MQTT bridge──▶ Mosquitto (cloud) ──▶ server.js ──▶ SQLite        (VM: docker compose)
+ *  Gateway (cloud_link.js) ──wss://…/mqtt──▶ broker tích hợp (broker.js) ──▶ server.js   (BROKER=embedded:
+ *                                                                        Render.com / Cloudflare Tunnel — chỉ có HTTPS)
  *                                                              │
  *                                       REST API + WebSocket ◀─┴─▶ Web app (public/)
  *
@@ -10,6 +12,7 @@
  *   flood/edge/log        nhật ký sự kiện
  *   flood/edge/incident   sự cố đã đóng (thời lượng, thời gian phản hồi, báo trước)
  *   flood/edge/bridge     1/0 — kết nối gateway ↔ cloud (Mosquitto bridge notification)
+ *   flood/edge/alert      cảnh báo → lưu + Web Push tới điện thoại người quản lý (PWA)
  *   flood/+/info, flood/+/status, flood/ai/prediction
  * Gửi xuống gateway (chỉ topic flood/cloud/#, gateway kiểm duyệt rồi mới chuyển cho node):
  *   flood/cloud/ack, flood/cloud/config/<id>, flood/cloud/cmd/<id>, flood/cloud/alarm/<id>
@@ -23,13 +26,15 @@ const express = require('express');
 const mqtt = require('mqtt');
 const { WebSocketServer } = require('ws');
 const { DatabaseSync } = require('node:sqlite');
+const webpush = require('web-push');
 
 const CFG = {
     port: Number(process.env.PORT) || 8080,
+    embedded: (process.env.BROKER || '').toLowerCase() === 'embedded',
     mqttUrl: process.env.MQTT_URL || 'mqtt://localhost:1883',
     mqttUser: process.env.MQTT_USER || undefined,
     mqttPass: process.env.MQTT_PASSWORD || undefined,
-    adminToken: process.env.ADMIN_TOKEN || '',
+    adminToken: (process.env.ADMIN_TOKEN || '').trim(),    // bỏ dấu cách/xuống dòng thừa khi dán vào Environment
     dbPath: process.env.DB_PATH || path.join(__dirname, 'data', 'flood.db'),
     sampleMs: 5000,          // lưu tối đa 1 mẫu / 5 s / node
     keepDays: 30
@@ -51,6 +56,9 @@ CREATE INDEX IF NOT EXISTS idx_events ON events(ts);
 CREATE TABLE IF NOT EXISTS incidents (key TEXT PRIMARY KEY, node TEXT, start INTEGER, end INTEGER, duration_s INTEGER,
     ack INTEGER, ack_by TEXT, response_s INTEGER, reminders INTEGER, max_L REAL, lead_s INTEGER);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT, ts INTEGER);
+CREATE TABLE IF NOT EXISTS alerts (ts INTEGER, severity TEXT, title TEXT, body TEXT, node TEXT, key TEXT);
+CREATE INDEX IF NOT EXISTS idx_alerts ON alerts(ts);
+CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, sub TEXT, name TEXT, created INTEGER);
 `);
 const Q = {
     insMeas: db.prepare('INSERT INTO measurements VALUES (?,?,?,?,?,?,?,?)'),
@@ -64,7 +72,15 @@ const Q = {
     stats: db.prepare(`SELECT COUNT(*) AS n, AVG(response_s) AS avg_response_s, AVG(duration_s) AS avg_duration_s,
         AVG(lead_s) AS avg_lead_s, SUM(CASE WHEN ack = 1 THEN 0 ELSE 1 END) AS unacked FROM incidents WHERE start >= ?`),
     pruneMeas: db.prepare('DELETE FROM measurements WHERE ts < ?'),
-    pruneEvents: db.prepare('DELETE FROM events WHERE ts < ?')
+    pruneEvents: db.prepare('DELETE FROM events WHERE ts < ?'),
+    insAlert: db.prepare('INSERT INTO alerts VALUES (?,?,?,?,?,?)'),
+    alerts: db.prepare('SELECT * FROM alerts ORDER BY ts DESC LIMIT ?'),
+    pruneAlerts: db.prepare('DELETE FROM alerts WHERE ts < ?'),
+    getKv: db.prepare('SELECT value FROM kv WHERE key = ?'),
+    addSub: db.prepare('INSERT OR REPLACE INTO push_subs VALUES (?,?,?,?)'),
+    delSub: db.prepare('DELETE FROM push_subs WHERE endpoint = ?'),
+    getSub: db.prepare('SELECT * FROM push_subs WHERE endpoint = ?'),
+    allSubs: db.prepare('SELECT * FROM push_subs')
 };
 const nul = v => (v === undefined || v === null || Number.isNaN(v) ? null : v);
 
@@ -81,6 +97,30 @@ for (const row of Q.kvLike.all('%')) {
 const lastSampled = {};
 const saveKv = (k, v) => Q.setKv.run(k, JSON.stringify(v), Date.now());
 
+// ─── Web Push (VAPID): khoá tạo 1 lần, lưu trong DB ─────────────────────────
+let vapid = process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY
+    ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY } : null;
+if (!vapid) {
+    const row = Q.getKv.get('vapid');
+    vapid = row ? JSON.parse(row.value) : webpush.generateVAPIDKeys();
+    if (!row) Q.setKv.run('vapid', JSON.stringify(vapid), Date.now());
+}
+webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:flood-monitor@example.com', vapid.publicKey, vapid.privateKey);
+
+async function pushToAll(payload) {
+    const subs = Q.allSubs.all();
+    const body = JSON.stringify(payload);
+    await Promise.all(subs.map(async row => {
+        try {
+            await webpush.sendNotification(JSON.parse(row.sub), body, { TTL: 600, urgency: payload.severity === 'critical' ? 'high' : 'normal' });
+        } catch (e) {
+            if (e.statusCode === 404 || e.statusCode === 410) Q.delSub.run(row.endpoint);   // thiết bị đã huỷ đăng ký
+            else console.error('[PUSH]', e.statusCode || '', e.message);
+        }
+    }));
+    return subs.length;
+}
+
 // ─── WebSocket ───────────────────────────────────────────────────────────────
 let wss;
 function broadcast(type, data, adminOnly = false) {
@@ -92,13 +132,19 @@ function broadcast(type, data, adminOnly = false) {
 }
 
 // ─── MQTT ────────────────────────────────────────────────────────────────────
-const client = mqtt.connect(CFG.mqttUrl, {
+const broker = CFG.embedded
+    ? require('./broker').createEmbeddedBroker({ edgePassword: (process.env.EDGE_PASSWORD || '').trim() })
+    : null;
+const mqttOpts = {
     username: CFG.mqttUser, password: CFG.mqttPass,
     clientId: 'flood-cloud-server-' + crypto.randomBytes(3).toString('hex'),
     reconnectPeriod: 3000
-});
+};
+const client = broker                                // luồng nội bộ tới broker tích hợp, không qua mạng
+    ? new mqtt.MqttClient(() => broker.localStream(), { ...mqttOpts, ...broker.serverAuth })
+    : mqtt.connect(CFG.mqttUrl, mqttOpts);
 client.on('connect', () => {
-    console.log('[MQTT] Đã kết nối', CFG.mqttUrl);
+    console.log('[MQTT] Đã kết nối', broker ? 'broker tích hợp (wss://<host>/mqtt cho gateway)' : CFG.mqttUrl);
     client.subscribe(['flood/edge/#', 'flood/+/info', 'flood/+/status', 'flood/ai/prediction'], { qos: 1 });
 });
 client.on('error', e => console.error('[MQTT]', e.message));
@@ -140,6 +186,15 @@ function handleMessage(topic, text) {
         Q.insInc.run(i.key, nul(i.node), nul(i.start), nul(i.end), nul(i.duration_s), i.ack ? 1 : 0, nul(i.ack_by),
             nul(i.response_s), nul(i.reminders), nul(i.max_L), nul(i.lead_s));
         broadcast('incident', i, true);
+    } else if (topic === 'flood/edge/alert') {
+        const a = json();
+        if (!a || !a.title) return;
+        const ts = Number(a.ts) || now;
+        const alert = { ts, severity: String(a.severity || 'info'), title: String(a.title).slice(0, 200),
+            body: String(a.body || '').slice(0, 600), node: a.node || null, key: a.key || null };
+        Q.insAlert.run(alert.ts, alert.severity, alert.title, alert.body, alert.node, alert.key);
+        broadcast('alert', alert, true);
+        if (alert.severity !== 'info') pushToAll({ ...alert, url: '/admin.html' }).catch(e => console.error('[PUSH]', e.message));
     } else if (topic === 'flood/edge/bridge') {
         live.bridge = { connected: text.trim() === '1', ts: now };
         saveKv('bridge', live.bridge);
@@ -260,11 +315,54 @@ app.post('/api/nodes/:id/alarm', requireAdmin, (req, res) => {
     publish(`flood/cloud/alarm/${id}`, action, res, action === 'off' ? 'Đã gửi lệnh tắt còi' : 'Đã gửi lệnh bật lại còi');
 });
 
-app.get('/healthz', (req, res) => res.json({ ok: true, mqtt: client.connected, gateway: gatewayStatus() }));
+// ─── Cảnh báo & Web Push ─────────────────────────────────────────────────────
+app.get('/api/alerts', requireAdmin, (req, res) => res.json(Q.alerts.all(Math.min(100, Number(req.query.limit) || 30))));
+app.get('/api/push/key', (req, res) => res.json({ publicKey: vapid.publicKey }));
+
+app.post('/api/push/subscribe', requireAdmin, (req, res) => {
+    const sub = req.body && req.body.subscription;
+    if (!sub || typeof sub.endpoint !== 'string' || !/^https:\/\//.test(sub.endpoint) || !sub.keys) {
+        return res.status(400).json({ error: 'Đăng ký không hợp lệ' });
+    }
+    const name = String((req.body && req.body.name) || 'Quản lý').slice(0, 40);
+    Q.addSub.run(sub.endpoint, JSON.stringify(sub), name, Date.now());
+    res.json({ ok: true, message: 'Đã bật thông báo trên thiết bị này' });
+});
+
+app.post('/api/push/unsubscribe', requireAdmin, (req, res) => {
+    Q.delSub.run(String((req.body && req.body.endpoint) || ''));
+    res.json({ ok: true, message: 'Đã tắt thông báo trên thiết bị này' });
+});
+
+app.post('/api/push/test', requireAdmin, async (req, res) => {
+    const n = await pushToAll({ ts: Date.now(), severity: 'warning', title: '🔔 Thử thông báo', body: 'Thiết bị này sẽ nhận cảnh báo ngập.', url: '/admin.html' });
+    res.json({ ok: true, message: `Đã gửi thử tới ${n} thiết bị` });
+});
+
+// Bấm "✅ Đã xử lý" ngay trên thông báo: service worker không có mã quản trị,
+// nên xác thực bằng chính đăng ký push (chỉ thiết bị quản trị đã đăng ký mới có trong DB).
+app.post('/api/push/ack', (req, res) => {
+    const endpoint = String((req.body && req.body.endpoint) || '');
+    const key = req.body && typeof req.body.key === 'string' ? req.body.key.slice(0, 60) : '';
+    const row = endpoint && Q.getSub.get(endpoint);
+    if (!row || !key) return res.status(403).json({ error: 'Thiết bị chưa đăng ký nhận thông báo' });
+    publish('flood/cloud/ack', { key, by: row.name + ' (thông báo)' }, res, 'Đã gửi xác nhận');
+});
+
+app.get('/healthz', (req, res) => res.json({ ok: true, mqtt: client.connected, broker: broker ? 'embedded' : 'external', gateway: gatewayStatus() }));
 
 // ─── Khởi động ───────────────────────────────────────────────────────────────
 const server = http.createServer(app);
-wss = new WebSocketServer({ server, path: '/ws' });
+wss = new WebSocketServer({ noServer: true });
+const mqttWss = broker ? new WebSocketServer({ noServer: true }) : null;
+if (mqttWss) mqttWss.on('connection', ws => broker.handleWebSocket(ws));
+// Một cổng HTTP cho cả hai WebSocket: /ws (web app) và /mqtt (gateway, chỉ khi BROKER=embedded)
+server.on('upgrade', (req, socket, head) => {
+    const p = (req.url || '').split('?')[0];
+    const target = p === '/ws' ? wss : (p === '/mqtt' && mqttWss) ? mqttWss : null;
+    if (!target) { socket.write('HTTP/1.1 404 Not Found\r\n\r\n'); return socket.destroy(); }
+    target.handleUpgrade(req, socket, head, ws => target.emit('connection', ws, req));
+});
 wss.on('connection', ws => {
     ws.isAdmin = false;
     ws.on('message', raw => {                         // client gửi {"auth":"<token>"} để nhận cả nhật ký
@@ -274,7 +372,7 @@ wss.on('connection', ws => {
 setInterval(() => broadcast('gateway', gatewayStatus()), 15000);
 setInterval(() => {
     const cut = Date.now() - CFG.keepDays * 86400e3;
-    Q.pruneMeas.run(cut); Q.pruneEvents.run(cut);
+    Q.pruneMeas.run(cut); Q.pruneEvents.run(cut); Q.pruneAlerts.run(cut);
 }, 6 * 3600e3);
 
 server.listen(CFG.port, () => console.log(`[HTTP] Web console: http://localhost:${CFG.port}  (quản trị: /admin)`));

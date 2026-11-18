@@ -9,10 +9,10 @@ Tài liệu nội bộ cho Nhóm 1. Mục tiêu: mỗi thành viên giải thíc
 | Tiêu chí | Điểm | Hệ thống đáp ứng bằng | Chỉ ra khi demo |
 |---|---|---|---|
 | **Ý tưởng IoT** (không phải nhúng/tự động hoá) | 1 | Giá trị đến từ **dữ liệu nhiều node được gom và kết hợp**: cống báo trước khi đường ngập (đo được *thời gian báo trước*), dữ liệu lên cloud phục vụ 2 nhóm người dùng, quản lý thiết bị từ xa. Hệ thống **không** tự bật bơm — con người ra quyết định và xác nhận | Tin "Ngập đang lan rộng – cống đã báo trước X phút"; KPI trên console |
-| **Kiến trúc IoT** (node, gateway, cloud) | 2 | **Node**: 2 ESP32 + JSN-SR04T (+ đèn/còi). **Gateway**: laptop chạy Mosquitto + Node-RED (Edge IT). **Cloud**: VM chạy Mosquitto + server + SQLite + web, nối với gateway qua **MQTT bridge** | Sơ đồ mục 2; rút điện gateway → cloud báo "Gateway mất kết nối" |
-| **Tự xây dựng IoT Platform** (node/gateway, server, thiết bị người dùng) | 1 | Firmware tự viết (`firmware/flood_node`), logic Edge tự viết (function node Node-RED), **server tự viết** (`cloud/server/server.js`: MQTT→SQLite→REST/WebSocket), **web app tự viết** (`public/index.html` công khai, `public/admin.html` quản lý) + bot Telegram | Mở web trên điện thoại 4G của giám khảo |
+| **Kiến trúc IoT** (node, gateway, cloud) | 2 | **Node**: 2 ESP32 + JSN-SR04T (+ đèn/còi). **Gateway**: laptop chạy Mosquitto + Node-RED (Edge IT). **Cloud**: Render.com (Docker) chạy server tự viết (broker MQTT tích hợp + SQLite + web/PWA), gateway nối lên bằng **MQTT qua WebSocket bảo mật (wss)**; cũng chạy được trên VM bằng docker compose | Sơ đồ mục 2; rút điện gateway → cloud báo "Gateway mất kết nối" |
+| **Tự xây dựng IoT Platform** (node/gateway, server, thiết bị người dùng) | 1 | Firmware tự viết (`firmware/flood_node`), logic Edge tự viết (function node Node-RED), **server tự viết** (`cloud/server/server.js`: MQTT→SQLite→REST/WebSocket), **web app / mobile app tự viết**: trang công khai `public/index.html` và **app quản lý PWA** `public/admin.html` cài lên điện thoại, nhận **Web Push** do server của nhóm gửi | Cài app lên điện thoại trước mặt giám khảo, cho xem thông báo đẩy đến máy |
 | **Độ hoàn thiện** | 1 | Chạy đủ kịch bản: an toàn → cảnh báo → khẩn cấp (yêu cầu + xác nhận) → hồi phục; mất mạng; cấu hình/hiệu chuẩn từ xa | Mục 5 |
-| **AI/ML hoặc triển khai cloud** | 1 | **Triển khai trên cloud** (VM thật, HTTPS) — chắc chắn đạt. AI dự báo là phần bổ sung, trình bày đúng mức (mục 7) | URL `https://<IP>.sslip.io` |
+| **AI/ML hoặc triển khai cloud** | 1 | **Triển khai trên cloud** (Render.com, Docker, HTTPS) **và** AI dự báo tại Edge (trình bày đúng mức, mục 7) — chỉ cần một trong hai | URL `https://<tên>.onrender.com` |
 | Video 5–7 phút | (−0,5 nếu thiếu) | Kịch bản mục 4 | — |
 | Báo cáo / slide | 2 + 2 | Dàn ý mục 8 | — |
 
@@ -23,12 +23,12 @@ Tài liệu nội bộ cho Nhóm 1. Mục tiêu: mỗi thành viên giải thíc
 ```
  Stage 1–2 (hiện trường)        │ Stage 3 (Edge IT)                │ Stage 4 (Cloud)
                                 │                                  │
- [Node cống] JSN-SR04T → ESP32 ─┼─WiFi/MQTT─▶ Mosquitto ◀─▶ Node-RED ─bridge─▶ Mosquitto ─▶ Server ─▶ SQLite
- [Node đường] JSN-SR04T → ESP32 ┤             (laptop)    │         │ (VM)                  │
-      └─ đèn + còi (tự chạy     │                         ├─▶ Telegram (người quản lý)      ├─▶ Web công khai (người dân)
-         khi mất mạng)          │                         └─▶ Dashboard nội bộ              └─▶ Web quản lý (đơn vị vận hành)
+ [Node cống] JSN-SR04T → ESP32 ─┼─WiFi/MQTT─▶ Mosquitto ◀─▶ Node-RED ─wss─▶ Broker ─▶ Server ─▶ SQLite
+ [Node đường] JSN-SR04T → ESP32 ┤             (laptop)    │         │ (Render)              │
+      └─ đèn + còi (tự chạy     │                         └─▶ Dashboard nội bộ              ├─▶ Web công khai (người dân)
+         khi mất mạng)          │                                                           └─▶ App quản lý PWA + Web Push (điện thoại người quản lý)
                                 │                                  │
- ◀──────── luồng điều khiển: tắt còi, cấu hình, hiệu chuẩn, xác nhận (Web/Telegram/Dashboard → gateway kiểm duyệt → node)
+ ◀──────── luồng điều khiển: tắt còi, cấu hình, hiệu chuẩn, xác nhận (App/Web/Dashboard → cloud → gateway kiểm duyệt → node)
 ```
 
 **Ai làm gì (phân vai xử lý):**
@@ -40,9 +40,9 @@ Tài liệu nội bộ cho Nhóm 1. Mục tiêu: mỗi thành viên giải thíc
 **Vì sao chỉ đẩy dữ liệu đã xử lý lên cloud?** Node đo 2 s/lần; gateway gom, tính toán rồi chỉ đẩy trạng thái + sự kiện → giảm băng thông, cloud vẫn có đủ dữ liệu (lưu 5 s/mẫu). Đây là lý do có tầng Edge.
 
 **Đối chiếu 7 tầng IoT World Forum:**
-1 Thiết bị: ESP32, JSN-SR04T, đèn, còi · 2 Kết nối: WiFi, MQTT, bridge · 3 Edge: Node-RED · 4 Lưu trữ: SQLite trên cloud (+ ThingSpeak tuỳ chọn) · 5 Trừu tượng dữ liệu: JSON + cấu trúc topic `flood/<id>/...` · 6 Ứng dụng: web công khai, web quản lý, dashboard · 7 Cộng tác & quy trình: yêu cầu vận hành → xác nhận → nhắc lại → thống kê thời gian phản hồi.
+1 Thiết bị: ESP32, JSN-SR04T, đèn, còi · 2 Kết nối: WiFi, MQTT, MQTT qua WebSocket bảo mật (wss) lên cloud · 3 Edge: Node-RED · 4 Lưu trữ: SQLite trên cloud của nhóm · 5 Trừu tượng dữ liệu: JSON + cấu trúc topic `flood/<id>/...` · 6 Ứng dụng: web công khai, app quản lý (PWA), dashboard · 7 Cộng tác & quy trình: thông báo đẩy yêu cầu vận hành → bấm "Đã xử lý" trên thông báo → nhắc lại sau 10 phút → thống kê thời gian phản hồi.
 
-**Security (yếu tố xuyên suốt):** broker cloud có mật khẩu + ACL theo topic; web qua HTTPS; mã quản trị cho console; chỉ chat Telegram được cấu hình mới xác nhận được; secrets không đưa lên git. Hạn chế: bridge chưa TLS (nêu trong báo cáo).
+**Security (yếu tố xuyên suốt):** broker cloud có mật khẩu + ACL theo topic; web qua HTTPS; mã quản trị cho console; nút "Đã xử lý" trên thông báo chỉ hợp lệ với thiết bị quản trị đã đăng ký; secrets không đưa lên git. Kết nối gateway ↔ cloud đi qua wss (có TLS). Hạn chế: gói Render free mất dữ liệu khi khởi động lại (nêu trong báo cáo).
 
 ---
 
@@ -65,9 +65,9 @@ Câu trả lời mẫu: *"Nếu bỏ mạng đi, mỗi node chỉ còn là một
 |---|---|---|
 | 0:00–0:40 | Bài toán: Hà Nội ngập, ứng phó bị động, thiếu dữ liệu tại điểm | Ảnh ngập, số liệu 20% quy hoạch |
 | 0:40–1:30 | Giải pháp + kiến trúc 4 tầng (sơ đồ mục 2), chỉ từng thiết bị trên mô hình fomex | Sơ đồ, quay mô hình |
-| 1:30–2:30 | **Kịch bản 1 – nước dâng**: đổ nước vào ống → console: VÀNG do *tốc độ dâng* → ĐỎ → Telegram "YÊU CẦU bật bơm/mở van" | Chia đôi màn hình: mô hình + điện thoại/console |
-| 2:30–3:15 | **Kịch bản 2 – tràn ra đường**: nước sang khay → đèn vàng/đỏ, còi → tin "Ngập đang lan rộng, cống báo trước X phút" | Quay đèn, tin Telegram |
-| 3:15–3:50 | **Kịch bản 3 – vận hành**: bấm ✅ trên Telegram (hoặc web) → console cập nhật "đã xác nhận", tắt còi từ web | Điện thoại + console |
+| 1:30–2:30 | **Kịch bản 1 – nước dâng**: đổ nước vào ống → console: VÀNG do *tốc độ dâng* → ĐỎ → **điện thoại rung, thông báo "YÊU CẦU bật bơm/mở van"** | Chia đôi màn hình: mô hình + điện thoại |
+| 2:30–3:15 | **Kịch bản 2 – tràn ra đường**: nước sang khay → đèn vàng/đỏ, còi → tin "Ngập đang lan rộng, cống báo trước X phút" | Quay đèn, thông báo trên điện thoại |
+| 3:15–3:50 | **Kịch bản 3 – vận hành**: bấm **✅ Đã xử lý ngay trên thông báo** → console cập nhật "đã xác nhận", tắt còi từ web | Điện thoại + console |
 | 3:50–4:30 | **Kịch bản 4 – chống báo sai & mất mạng**: đưa tay qua cảm biến đường → không đổi mức; rút WiFi → đèn vẫn chạy, cloud báo node offline | Quay đèn + console |
 | 4:30–5:15 | **Kịch bản 5 – quản lý từ xa**: đổi ngưỡng / hiệu chuẩn d0 từ web trên điện thoại 4G → nhật ký "duong1: đã áp dụng cấu hình" | Điện thoại |
 | 5:15–6:15 | Kết quả đo: bảng sai số, độ trễ, thời gian báo trước, KPI 7 ngày; trang công khai bản đồ | Bảng số liệu |
@@ -79,10 +79,12 @@ Quay màn hình console và quay mô hình **cùng lúc** (2 thiết bị), ghé
 
 ## 5. Checklist trước giờ demo
 
-- [ ] VM cloud chạy, mở được `https://<IP>.sslip.io` bằng 4G (không dùng WiFi trường)
+> Hướng dẫn đầy đủ cho mạch thật (mạng, nạp firmware, hiệu chuẩn, kịch bản, xử lý sự cố): **[CHAY_THAT_KHI_DEMO.md](CHAY_THAT_KHI_DEMO.md)**.
+
+- [ ] Cloud chạy: mở `https://<tên>.onrender.com` bằng 4G **trước 5–10 phút** (đánh thức service nếu đang ngủ); `/healthz` báo gateway online
 - [ ] Laptop + 2 ESP32 dùng **hotspot điện thoại**; laptop có IP cố định trong `config.h`
 - [ ] `start_all.bat` → dashboard nội bộ OK; console cloud hiện **Gateway online**
-- [ ] Bot Telegram: `/status` trả lời; chat ID đúng
+- [ ] App quản lý đã cài trên điện thoại, đã **Bật thông báo**, bấm **Gửi thử** nhận được
 - [ ] Ngưỡng đường đã quy đổi cho khay (VD 2/4/3/1,5 cm) qua web; hiệu chuẩn d0 khi khay khô, H khi ống rỗng
 - [ ] Nước, cốc, khăn; pin dự phòng cho điện thoại
 - [ ] Phương án B: `python test_simulator.py` nếu phần cứng hỏng (nói rõ là mô phỏng)
@@ -94,16 +96,18 @@ Quay màn hình console và quay mô hình **cùng lúc** (2 thiết bị), ghé
 
 | Câu hỏi | Trả lời ngắn |
 |---|---|
-| Gateway ở đâu? | Laptop chạy Mosquitto + Node-RED. Nó gom dữ liệu từ các node trong mạng cục bộ, xử lý tại biên và là điểm duy nhất nối lên cloud qua MQTT bridge. Thực tế thay bằng Raspberry Pi / máy tính công nghiệp tại trạm bơm. |
+| App trên điện thoại là app gì? | App của nhóm: web app dạng **PWA**, cài lên màn hình chính như app thật. Server của nhóm gửi thông báo đẩy theo chuẩn **Web Push (VAPID)** qua kênh push có sẵn của trình duyệt; người quản lý bấm "Đã xử lý" ngay trên thông báo. Không dùng Telegram hay dịch vụ IoT bên thứ ba. |
+| Gateway ở đâu? | Laptop chạy Mosquitto + Node-RED. Nó gom dữ liệu từ các node trong mạng cục bộ, xử lý tại biên và là điểm duy nhất nối lên cloud (chương trình `cloud_link` chuyển MQTT qua wss, chỉ dữ liệu đã xử lý). Thực tế thay bằng Raspberry Pi / máy tính công nghiệp tại trạm bơm. |
 | Sao không gửi thẳng ESP32 lên cloud? | Được, nhưng mất lợi ích Edge: tính toán gần nguồn, vẫn cảnh báo khi mất Internet, giảm dữ liệu lên cloud, và một điểm kiểm duyệt lệnh xuống node. |
 | Platform nào nhóm tự viết? | Firmware, toàn bộ logic Edge, server cloud (MQTT→SQLite→API→WebSocket) và 2 web app. Node-RED/Mosquitto/SQLite chỉ là runtime, như Linux hay Express. |
-| Mất WiFi thì sao? | Node đường vẫn tự đổi đèn/còi (task FreeRTOS riêng). Broker phát Last Will → gateway báo offline qua Telegram/web. Gateway mất Internet → cloud nhận Last Will của bridge → web báo "gateway mất kết nối". |
+| Mất WiFi thì sao? | Node đường vẫn tự đổi đèn/còi (task FreeRTOS riêng). Broker phát Last Will → gateway báo offline (thông báo đẩy + web). Gateway mất Internet → broker trên cloud phát Last Will của gateway (`flood/edge/bridge = 0`) → web báo "gateway mất kết nối". |
 | Xe chạy qua cảm biến đường? | Mức mới phải giữ ổn định 20 s mới được công nhận; xe qua chỉ vài giây → bị bỏ. Demo bằng tay. |
 | Tốc độ dâng tính thế nào? | Trung bình trượt 5 mẫu, so với giá trị cách đây 1 phút: v = (m_tb − m_tb_1phút) / Δt. Cống 60% nhưng dâng 5 cm/phút → ĐỎ sớm hơn chờ 80%. |
 | Hysteresis để làm gì? | Lên ĐỎ khi h > 20, chỉ về VÀNG khi h < 15 → mực nước dao động quanh 20 cm không làm đèn nhấp nháy, không spam tin. |
 | Sao không tự bật bơm? | Bơm/van thuộc đơn vị quản lý, ảnh hưởng cả lưu vực; hệ thống cung cấp dữ liệu kịp thời và quy trình xác nhận có trách nhiệm (ai xác nhận, sau bao lâu). Tự động hoá vòng kín là hướng phát triển. |
-| Bảo mật? | Mật khẩu + ACL trên broker cloud, HTTPS, mã quản trị, chỉ chat được cấu hình mới xác nhận; secrets ngoài git. Chưa TLS cho bridge – sẽ dùng cổng 8883. |
-| Thêm node mới? | Nạp firmware với `NODE_ID` mới; flow subscribe `flood/+/...` nên tự nhận, node tự hiện trong bảng thiết bị và trên web (thêm toạ độ vào `nodes.json`). |
+| Sao chỉ có 1 ESP32 mà nói 2 node? | Do giới hạn phần cứng, một ESP32 gắn 2 cảm biến và chạy **2 node logic**: mỗi node có kết nối MQTT, Last Will, cấu hình và hiệu chuẩn riêng. Phía gateway/cloud không phân biệt — thêm mạch thứ hai chỉ cần đổi `NODE_MODE`, không sửa server. Ngoài thực địa mỗi điểm đo là một mạch riêng. (Nói thẳng điều này, đừng giấu.) |
+| Bảo mật? | Mật khẩu + ACL trên broker cloud, HTTPS, mã quản trị, chỉ thiết bị quản trị đã đăng ký mới xác nhận được từ thông báo; mật khẩu ngoài git (Environment của Render). Gateway ↔ cloud qua wss có TLS. |
+| Thêm node mới? | Nạp firmware với mã node mới (`DRAIN_ID`/`ROAD_ID`); flow subscribe `flood/+/...` nên tự nhận, node tự hiện trong bảng thiết bị và trên web (thêm toạ độ vào `nodes.json`). |
 | Dữ liệu dùng để làm gì về lâu dài? | Thống kê số sự cố, thời gian báo trước, thời gian phản hồi theo từng điểm → biết điểm nào cần nâng cấp cống trước (đầu tư đúng chỗ). |
 
 ---
@@ -127,13 +131,13 @@ Quay màn hình console và quay mô hình **cùng lúc** (2 thiết bị), ghé
 |---|---|---|
 | Sai số cảm biến | so với thước ở 5 mức nước, mỗi mức 10 lần | ± … cm |
 | Độ trễ đèn | từ lúc mức ổn định đến lúc đèn đổi (quay video, đếm khung hình) | … s (yêu cầu < 3 s sau thời gian ổn định) |
-| Độ trễ Telegram / web | từ lúc đổi mức trên dashboard đến lúc nhận tin | … s (yêu cầu < 10 s) |
+| Độ trễ thông báo đẩy | từ lúc đổi mức trên dashboard đến lúc điện thoại rung | … s (yêu cầu < 10 s) |
 | Chống báo sai | đưa tay/vật qua cảm biến 10 lần | … / 10 lần không đổi mức |
 | Mất mạng | tắt hotspot khi đang ngập | đèn vẫn đúng; thời gian báo offline … s |
 | Thời gian báo trước | từ lúc cống ĐỎ đến lúc đường VÀNG (KPI trên console) | … phút |
 | Chi phí | bảng linh kiện thực tế | … đ (< 1 triệu) |
 
-4. Hạn chế trung thực: quy mô 2 node, bridge chưa TLS, AI trên dữ liệu tổng hợp, vị trí bản đồ minh hoạ.
+4. Hạn chế trung thực: quy mô 2 node, cloud miễn phí mất dữ liệu khi khởi động lại, AI trên dữ liệu tổng hợp, vị trí bản đồ minh hoạ.
 
 **Slide (≤ 15):** 1 Bìa · 2 Bài toán · 3 Khoảng trống · 4 Giải pháp · 5 Vì sao là IoT · 6 Kiến trúc 4 tầng · 7 Phần cứng & mô hình · 8 Thuật toán (tốc độ dâng, hysteresis, ổn định 20 s) · 9 Edge: kết hợp 2 node & quy trình sự cố · 10 Cloud & web app · 11 Quản lý thiết bị từ xa · 12 Kết quả thực nghiệm · 13 So sánh với nghiên cứu khác · 14 Hạn chế & hướng phát triển · 15 Demo / cảm ơn.
 
@@ -143,6 +147,6 @@ Quay màn hình console và quay mô hình **cùng lúc** (2 thiết bị), ghé
 
 | Thành viên | Việc |
 |---|---|
-| Đức | Lắp mạch (còi sang **GPIO 25**), nạp `flood_node` cho 2 node, mô hình fomex, đo sai số cảm biến |
-| Huy | Token bot, chạy `start_all.bat`, thử đủ kịch bản mục 4, đo độ trễ Telegram, bridge lên cloud |
-| Vân Anh | Tạo VM + `docker compose up`, kiểm tra web trên 4G, báo cáo + slide, dựng video |
+| Đức | Lắp mạch 1 ESP32 + 2 cảm biến (`MODE_DUAL`, còi **GPIO 25**, cảm biến 2 ở GPIO 19/21), nạp `flood_node`, mô hình fomex, đo sai số cảm biến |
+| Huy | Chạy `start_all.bat`, thử đủ kịch bản mục 4, kết nối lên cloud (`cloud_link`), đo độ trễ thông báo đẩy |
+| Vân Anh | Tạo service Render (+ thử `start_cloud_tunnel.bat` dự phòng), kiểm tra web trên 4G, báo cáo + slide, dựng video |

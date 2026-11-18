@@ -1,0 +1,3 @@
+# Thư viện Wokwi cài khi biên dịch (Library Manager)
+PubSubClient
+ArduinoJson

@@ -58,3 +58,5 @@ cloud/server/data/
 nodered/.node-red/package-lock.json
 !mosquitto/conf.d/00-default.conf
 nodered/.node-red/.config.nodes.json
+gateway/cloud_link/config.json
+cloud/.tunnel.log

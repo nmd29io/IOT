@@ -1,7 +1,7 @@
 # 🌊 Hệ thống Giám sát & Cảnh báo Ngập úng Đô thị
 
 > **Urban Flood Monitoring & Alert System**  
-> Dự án IoT 4 tầng sử dụng ESP32 + JSN-SR04T + MQTT + Node-RED + ThingSpeak + Telegram
+> Dự án IoT 4 tầng: ESP32 + JSN-SR04T → MQTT → Gateway Node-RED (Edge) → Cloud tự xây dựng (server + SQLite + web app/PWA)
 
 ---
 
@@ -24,7 +24,8 @@
 
 ## 1. Tổng quan dự án
 
-Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực nước trong cống thoát nước** và **độ sâu ngập trên mặt đường**, phát cảnh báo tự động qua **Telegram** và lưu dữ liệu lên **ThingSpeak Cloud**.
+Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực nước trong cống thoát nước** và **độ sâu ngập trên mặt đường**, xử lý tại gateway, lưu trữ trên **cloud do nhóm tự xây dựng** và đẩy cảnh báo tới **ứng dụng quản lý (PWA) trên điện thoại** qua Web Push.
+Mọi phần mềm (firmware, logic Edge, server, web/mobile app) đều do nhóm tự viết — không phụ thuộc dịch vụ IoT bên thứ ba.
 
 ### Tính năng chính
 
@@ -37,15 +38,16 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 | Hysteresis | Ngưỡng lên/xuống khác nhau + thời gian giữ tối thiểu → không nhấp nháy |
 | Tốc độ dâng | Edge tính theo cửa sổ 1 phút; dùng làm tín hiệu cảnh báo sớm |
 | Cảnh báo tại chỗ | Đèn 3 màu + còi ở node đường, **chạy trong task riêng – vẫn hoạt động khi mất WiFi/broker** |
-| Yêu cầu vận hành | Cống ĐỎ → Telegram "bật bơm/mở van" kèm **nút Xác nhận**; nhắc lại sau 10 phút |
+| Yêu cầu vận hành | Cống ĐỎ → thông báo đẩy "bật bơm/mở van" tới điện thoại, **bấm "Đã xử lý" ngay trên thông báo**; nhắc lại sau 10 phút |
 | Kết hợp 2 node | Cống ĐỎ + đường ngập → "Ngập đang lan rộng" kèm **thời gian báo trước** |
 | Quản lý thiết bị | Heartbeat (RSSI, uptime, lỗi đo, fw), Last Will, watchdog 30 s |
 | Cấu hình & hiệu chuẩn từ xa | Đổi ngưỡng / chu kỳ / kích thước lắp đặt, hiệu chuẩn d0/H từ dashboard; node lưu NVS |
 | Dashboard | 2 tab: Giám sát & Quản lý thiết bị |
-| Telegram Bot | Cảnh báo theo mức, xác nhận xử lý, lệnh `/status` |
-| **Cloud tự xây dựng** | VM: Mosquitto (mật khẩu + ACL) + server Node.js + SQLite + **web công khai (bản đồ ngập)** và **console quản lý** qua HTTPS — xem [cloud/README.md](cloud/README.md) |
-| ThingSpeak | (Tuỳ chọn) lưu lịch sử trên ThingSpeak, gộp 2 node / 15 s |
+| **Cloud tự xây dựng** | Render.com (Docker): server Node.js có broker MQTT tích hợp (mật khẩu + ACL) + SQLite + **web công khai (bản đồ ngập)** và **console quản lý** qua HTTPS — xem [cloud/README.md](cloud/README.md) |
+| App quản lý (PWA) | Cài lên màn hình chính điện thoại; nhận Web Push từ server của nhóm, kể cả khi app đang đóng |
 
+> 🔧 **Chạy thật khi demo (mạch ESP32 thật):** checklist từng bước ở [docs/CHAY_THAT_KHI_DEMO.md](docs/CHAY_THAT_KHI_DEMO.md).
+>
 > 📘 **Bảo vệ đề tài:** đối chiếu tiêu chí chấm, cách giải thích kiến trúc, kịch bản video và câu hỏi thường gặp ở [docs/HUONG_DAN_DEMO.md](docs/HUONG_DAN_DEMO.md).
 
 ---
@@ -56,8 +58,8 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     TẦNG 4 — CLOUD                                       │
 │          ┌───────────────┐          ┌──────────────────┐                 │
-│          │   Cloud VM    │          │   Telegram Bot   │                 │
-│          │ server + web  │          │  (Alert Channel) │                 │
+│          │ Render (cloud)│          │  App quản lý PWA │                 │
+│          │ server + DB   │          │   (Web Push)     │                 │
 │          └───────┬───────┘          └────────┬─────────┘                 │
 └──────────────────┼──────────────────────────┼─────────────────────────── ┘
                    │ HTTPS                    │ HTTPS
@@ -65,7 +67,7 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 │              TẦNG 3 — EDGE IT (Laptop)       │                            │
 │    ┌─────────────▼──────────────────────────▼──────────────┐             │
 │    │                     Node-RED                           │             │
-│    │  Parse → Hysteresis → Dashboard → ThingSpeak → Telegram│             │
+│    │  Lọc → Tốc độ dâng → Phân mức → Sự cố → Cảnh báo → Bridge│           │
 │    └─────────────────────────┬──────────────────────────────┘             │
 │                              │ MQTT                                        │
 │    ┌─────────────────────────▼──────────────────────────────┐             │
@@ -115,31 +117,28 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 
 ## 4. Sơ đồ kết nối
 
-### Node 1 — cong1 (Đo mực nước cống)
+Nhóm hiện có **1 ESP32**, nên dùng chế độ `MODE_DUAL`: một mạch gắn **2 cảm biến** và chạy **2 node logic**
+`cong1` + `duong1`. Mỗi node logic có kết nối MQTT, Last Will và cấu hình riêng, nên Node-RED và cloud
+vẫn thấy 2 node như khi dùng 2 mạch. Có thêm mạch thì chuyển sang `MODE_DRAIN` / `MODE_ROAD`, không phải sửa phía server.
 
-| Chân JSN-SR04T | Chân ESP32 | Ghi chú |
-|---|---|---|
-| VCC | 5V | Nguồn 5V |
-| GND | GND | Nối đất |
-| TRIG | GPIO 5 | Xung kích |
-| ECHO | GPIO 18 | Nhận tín hiệu |
+### Một ESP32 cho cả hai node (`MODE_DUAL`)
 
-### Node 2 — duong1 (Đo ngập đường + Cảnh báo)
+| Linh kiện | Chân linh kiện | Chân ESP32 | Ghi chú |
+|---|---|---|---|
+| Cảm biến 1 – **cống** | VCC / GND | 5V / GND | |
+| | TRIG | GPIO 5 | |
+| | ECHO | GPIO 18 | qua cầu chia áp 1 kΩ / 2 kΩ |
+| Cảm biến 2 – **đường** | VCC / GND | 5V / GND | |
+| | TRIG | GPIO 19 | |
+| | ECHO | GPIO 21 | qua cầu chia áp 1 kΩ / 2 kΩ |
+| LED xanh / vàng / đỏ | Anode → R220Ω | GPIO 26 / 27 / 14 | Cathode về GND |
+| Còi (+) / (−) | | GPIO 25 / GND | **không dùng GPIO 12** (chân strapping) |
 
-| Linh kiện | Chân linh kiện | Chân ESP32 |
-|---|---|---|
-| JSN-SR04T VCC | VCC | 5V |
-| JSN-SR04T GND | GND | GND |
-| JSN-SR04T TRIG | TRIG | GPIO 5 |
-| JSN-SR04T ECHO | ECHO | GPIO 18 |
-| LED Xanh lá | Anode → R220Ω | GPIO 26 |
-| LED Vàng | Anode → R220Ω | GPIO 27 |
-| LED Đỏ | Anode → R220Ω | GPIO 14 |
-| Buzzer (+) | | GPIO 25 (**không dùng GPIO 12** – chân strapping, làm ESP32 không khởi động) |
-| Buzzer (−) | | GND |
-| Tất cả Cathode LED | | GND |
+Khi dùng 2 mạch riêng (`MODE_DRAIN` / `MODE_ROAD`): mỗi mạch chỉ gắn cảm biến 1 (GPIO 5 / 18); mạch đường gắn thêm đèn và còi như trên.
 
-> **Lưu ý:** JSN-SR04T hoạt động với 5V. ECHO output cũng là 5V — dùng **bộ chia điện áp** (R1=1kΩ, R2=2kΩ) hoặc **level shifter** trước khi nối vào GPIO 18 (3.3V tolerant) của ESP32.
+> **Lưu ý:** JSN-SR04T chạy 5V, chân ECHO ra 5V — bắt buộc dùng **cầu chia áp** (R1 = 1 kΩ nối tiếp, R2 = 2 kΩ xuống GND)
+> hoặc level shifter trước khi vào ESP32 (3,3V). Hai cảm biến được đo lần lượt nên không nhiễu nhau,
+> nhưng nên đặt chúng cách nhau và không cùng hướng vào một mặt nước.
 
 ---
 
@@ -164,8 +163,7 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 
 ### Tài khoản Cloud
 
-- **ThingSpeak**: https://thingspeak.com (miễn phí)
-- **Telegram**: Tạo bot qua @BotFather
+- **Tài khoản Render.com** (gói free) cho tầng Cloud — hoặc VPS/máy ảo, hoặc dự phòng `start_cloud_tunnel.bat`; xem [cloud/README.md](cloud/README.md)
 
 ---
 
@@ -190,18 +188,18 @@ Hệ thống giám sát ngập úng đô thị theo dõi đồng thời **mực 
 
 #### 1.3 Cấu hình config.h
 
-Hai node dùng **chung một sketch** [`firmware/flood_node/flood_node.ino`](firmware/flood_node/flood_node.ino).
+Firmware [`firmware/flood_node/flood_node.ino`](firmware/flood_node/flood_node.ino) dùng chung cho mọi trường hợp.
 Sao chép `firmware/flood_node/config.example.h` thành `firmware/flood_node/config.h` (đã gitignore) và sửa:
 
 ```cpp
-#define NODE_ID     "cong1"         // hoặc "duong1"
-#define NODE_ROLE   ROLE_DRAIN      // ROLE_DRAIN = node cống, ROLE_ROAD = node đường
+#define NODE_MODE   MODE_DUAL       // 1 ESP32 chạy cả cong1 + duong1 (MODE_DRAIN / MODE_ROAD nếu có 2 mạch)
+#define DRAIN_ID    "cong1"
+#define ROAD_ID     "duong1"
 #define WIFI_SSID   "Ten_WiFi"
 #define WIFI_PASSWORD "Mat_khau"
-#define MQTT_SERVER "192.168.1.100" // IP laptop chạy Mosquitto
+#define MQTT_SERVER "192.168.1.100" // IP laptop chạy Mosquitto (xem bằng ipconfig)
 ```
 
-Nạp lần 1 cho mạch cống, sửa `NODE_ID`/`NODE_ROLE` rồi nạp lần 2 cho mạch đường.
 Các thông số lắp đặt (H, Hmax, d0, ngưỡng) chỉ là mặc định — sau khi lắp, vào dashboard
 **Quản lý thiết bị** để hiệu chuẩn và chỉnh từ xa, không cần nạp lại firmware.
 
@@ -245,7 +243,6 @@ Truy cập: **http://localhost:1880**
 
 **Cài palettes** (Menu → Manage Palette → Install):
 - `node-red-dashboard`
-- `node-red-contrib-telegrambot`
 
 > Nếu chạy bằng `start_all.bat`, Node-RED dùng sẵn `nodered/.node-red/flows.json` – không cần import.
 
@@ -261,40 +258,19 @@ Truy cập: **http://localhost:1880**
 
 ---
 
-### Bước 4 — Cài đặt ThingSpeak
+### Bước 4 — Triển khai Cloud & cài app trên điện thoại
 
-1. Đăng ký tại https://thingspeak.com
-2. Tạo Channel → đặt tên "Flood Monitor"
-3. Thêm 6 fields:
-   - Field 1: `pipe_level_cm`
-   - Field 2: `fill_pct`
-   - Field 3: `rise_rate_cm_min`
-   - Field 4: `road_depth_cm`
-   - Field 5: `cong1_alert`
-   - Field 6: `duong1_alert`
-4. Vào **API Keys** → sao chép Write API Key
-5. Sao chép `config/secrets.env.example` → `config/secrets.env`, điền `THINGSPEAK_WRITE_API_KEY`
-
----
-
-### Bước 5 — Cài đặt Telegram Bot
-
-1. Nhắn tin @BotFather: `/newbot`
-2. Đặt tên bot: `FloodAlertBot` (hoặc tên khác)
-3. Lưu **Bot Token**
-4. Nhắn tin với bot của bạn, sau đó truy cập:
-   ```
-   https://api.telegram.org/bot<TOKEN>/getUpdates
-   ```
-5. Lấy `chat.id` từ JSON → điền `TELEGRAM_CHAT_ID` trong `config/secrets.env`
-6. Trong Node-RED, mở node cấu hình **FloodAlertBot** → dán Bot Token → Deploy
-7. Thử: nhắn `/status` cho bot. Khi cống lên ĐỎ, tin nhắn có nút **✅ Đã xử lý**; chỉ chat có `TELEGRAM_CHAT_ID` mới xác nhận được.
+1. Làm theo [cloud/README.md](cloud/README.md) mục A: tạo service Render (mật khẩu khai trong *Environment*), tạo `gateway/cloud_link/config.json` rồi `start_all.bat`.
+   (Không dùng được Render: mục C — `start_cloud_tunnel.bat`.)
+   (Có VPS thì dùng mục B: `docker compose up -d --build` + bridge `mosquitto/conf.d/cloud-bridge.conf`.)
+2. Trên điện thoại mở `https://<tên>.onrender.com/admin` → đăng nhập → **📲 Cài ứng dụng** → **🔔 Bật thông báo**.
+3. Khi cống lên ĐỎ, điện thoại nhận thông báo có nút **✅ Đã xử lý**.
 
 ---
 
 ## 7. Bảng MQTT Topics
 
-Cấu trúc `flood/<mã node>/...` — thêm node mới chỉ cần đổi `NODE_ID`; Node-RED subscribe `flood/+/...` nên tự nhận.
+Cấu trúc `flood/<mã node>/...` — thêm node mới chỉ cần đặt mã node mới (`DRAIN_ID` / `ROAD_ID`); Node-RED subscribe `flood/+/...` nên tự nhận.
 
 | Topic | Hướng | Retain | Nội dung |
 |---|---|---|---|
@@ -305,9 +281,10 @@ Cấu trúc `flood/<mã node>/...` — thêm node mới chỉ cần đổi `NODE
 | `flood/<id>/config` | Edge → Node | Có | Cấu hình từ xa (chỉ cần các khoá muốn đổi): `H, Hmax` (cống) · `d0, t_yellow, t_red, t_red_low, t_yellow_low, stable_s` (đường) · `period_s` |
 | `flood/<id>/cmd` | Edge → Node | Không | `{"cmd":"calibrate"}` (đo lại H khi cống rỗng / d0 khi đường khô), `report`, `reboot` |
 | `flood/duong1/alarm/cmd` | Edge → Node | Không | `off` (tắt còi) / `on` (bật lại còi) |
-| `flood/edge/state` | Edge → Cloud (bridge) | Có | Trạng thái đã xử lý: mức từng node, sự cố đang mở, ngập lan rộng |
+| `flood/edge/state` | Edge → Cloud (cloud_link / bridge) | Có | Trạng thái đã xử lý: mức từng node, sự cố đang mở, ngập lan rộng |
 | `flood/edge/log`, `flood/edge/incident` | Edge → Cloud | Không | Nhật ký; sự cố đã đóng (thời lượng, phản hồi, báo trước) |
-| `flood/edge/bridge` | Bridge → Cloud | Có | `1`/`0` – gateway kết nối cloud (Last Will của bridge) |
+| `flood/edge/alert` | Edge → Cloud | Không | Cảnh báo `{severity, title, body, node, key}` → cloud đẩy Web Push tới điện thoại |
+| `flood/edge/bridge` | Gateway → Cloud | Có | `1`/`0` – gateway kết nối cloud (Last Will của cloud_link / bridge) |
 | `flood/cloud/ack`, `flood/cloud/config/<id>`, `flood/cloud/cmd/<id>`, `flood/cloud/alarm/<id>` | Cloud → Edge | Không | Lệnh từ Web console; gateway kiểm duyệt rồi mới chuyển xuống node |
 | `flood/ai/prediction` | ML service → Edge | Không | Kết quả dự báo AI |
 | `flood/weather/radar` | Simulator → ML | Không | Mưa mô phỏng (chỉ dùng khi test) |
@@ -321,8 +298,8 @@ Cấu trúc `flood/<mã node>/...` — thêm node mới chỉ cần đổi `NODE
 | Mức | Lên mức khi | Hạ mức (sau khi giữ ≥ 30 s) | Hành động |
 |---|---|---|---|
 | 🟢 XANH | — | về XANH khi L ≤ 45% và v < 1,5 | Theo dõi |
-| 🟡 VÀNG | L > 50% **hoặc** v ≥ 2 cm/phút | rời ĐỎ khi L ≤ 75% và không (L > 55% và v ≥ 4) | Telegram thông báo theo dõi |
-| 🔴 ĐỎ | L > 80% **hoặc** (L > 60% **và** v ≥ 5 cm/phút) | | Telegram **YÊU CẦU bật bơm/mở van** + nút Xác nhận, nhắc lại sau 10 phút |
+| 🟡 VÀNG | L > 50% **hoặc** v ≥ 2 cm/phút | rời ĐỎ khi L ≤ 75% và không (L > 55% và v ≥ 4) | Thông báo đẩy "theo dõi" |
+| 🔴 ĐỎ | L > 80% **hoặc** (L > 60% **và** v ≥ 5 cm/phút) | | Thông báo đẩy **YÊU CẦU bật bơm/mở van** + nút Đã xử lý, nhắc lại sau 10 phút |
 
 ### Node đường — phân mức ngay trên ESP32 (h = độ sâu ngập)
 
@@ -337,7 +314,7 @@ quy đổi nhỏ lại bằng form **Quản lý thiết bị → Node đường 
 
 ### Kết hợp hai node (Node-RED)
 
-| Tình huống | Tin Telegram |
+| Tình huống | Cảnh báo (dashboard + thông báo đẩy) |
 |---|---|
 | Mức của một node thay đổi (lên **hoặc xuống**) | Tin theo mức, kèm số đo |
 | Cống chuyển sang ĐỎ | Yêu cầu bật bơm/mở van + nút ✅; khi cống hạ mức gửi tổng kết sự cố (thời lượng, ai xác nhận, sau bao lâu) |
@@ -353,9 +330,13 @@ PRoject/
 ├── firmware/flood_node/
 │   ├── flood_node.ino              # Firmware dùng chung cho mọi node (chọn vai trò trong config.h)
 │   └── config.example.h            # Mẫu cấu hình → sao chép thành config.h (không commit)
-├── cloud/                          # Tầng Cloud tự xây dựng (triển khai trên VM bằng docker compose)
-│   ├── docker-compose.yml, Caddyfile, .env.example, mosquitto/
-│   └── server/                     # server.js (MQTT→SQLite→REST/WebSocket) + public/ (web app)
+├── cloud/                          # Tầng Cloud tự xây dựng
+│   ├── server/Dockerfile.embedded  # Image cho Render (broker tích hợp); render.yaml ở gốc repo
+│   ├── docker-compose.yml, Caddyfile, .env.example, mosquitto/   # Cách B: VM/VPS
+│   └── server/                     # server.js (MQTT→SQLite→REST/WebSocket), broker.js (MQTT qua wss) + public/ (web app)
+├── gateway/cloud_link/             # Gateway → cloud qua wss (thay Mosquitto bridge khi cloud chỉ mở HTTPS)
+├── render.yaml                     # Render Blueprint (không chứa mật khẩu)
+├── start_cloud_tunnel.bat          # Dự phòng: server trên laptop + Cloudflare Tunnel
 ├── docs/HUONG_DAN_DEMO.md          # Đối chiếu tiêu chí, kịch bản demo, Q&A
 ├── mosquitto/
 │   ├── mosquitto.conf              # Cấu hình Mosquitto broker (gateway)
@@ -367,7 +348,6 @@ PRoject/
 │   ├── .node-red/                  # userDir Node-RED mà start_all.ps1 sử dụng
 │   └── README_nodered.md           # Hướng dẫn cài đặt Node-RED
 ├── config/
-│   ├── secrets.env.example         # Mẫu → sao chép thành secrets.env (không commit)
 │   └── gis_hydraulic_params.json   # Tham số cho khối AI
 ├── test_simulator.py               # Node ảo cong1/duong1 (kịch bản hoặc --loop)
 ├── simulate_nodes.bat              # Chạy mô phỏng liên tục
@@ -385,7 +365,7 @@ python test_simulator.py          # 4 kịch bản: an toàn → cảnh báo →
 python test_simulator.py --loop   # chu kỳ mưa lặp liên tục (simulate_nodes.bat)
 ```
 
-Node ảo dùng đúng giao thức firmware v2 nên thử được cả: nút Xác nhận trên Telegram, form cấu hình,
+Node ảo dùng đúng giao thức firmware v2 nên thử được cả: nút Xác nhận trên dashboard/app, form cấu hình,
 nút hiệu chuẩn, tắt/bật còi, và **Ctrl+C để thấy hệ thống báo node offline**. Đây là dữ liệu mô phỏng — ghi rõ khi đưa vào báo cáo.
 
 ---
@@ -413,18 +393,10 @@ nút hiệu chuẩn, tắt/bật còi, và **Ctrl+C để thấy hệ thống b�
 - Dùng node **mqtt in** với topic `flood/#` và debug node để xem raw messages
 - Kiểm tra payload là JSON hợp lệ bằng MQTT Explorer
 
-### Telegram không nhận tin nhắn
-- Xác nhận Bot Token đúng
-- Xác nhận Chat ID đúng (số nguyên, có thể âm cho group chat)
-- Thử gọi API thủ công:
-  ```bash
-  curl "https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>&text=test"
-  ```
-
-### ThingSpeak không nhận dữ liệu
-- Kiểm tra Write API Key
-- ThingSpeak free tier giới hạn 1 lần ghi / 15 giây — đã được xử lý trong Node-RED
-- Kiểm tra internet trên laptop
+### Không nhận được thông báo trên điện thoại
+- Phải mở app qua **HTTPS** (`https://<tên>.onrender.com/admin`), không dùng `http://`
+- Android: Chrome → cho phép thông báo; iPhone: thêm vào màn hình chính rồi mở từ đó (iOS 16.4+)
+- Console → **Gửi thử**; kiểm tra gateway đang online (cửa sổ `cloud_link` báo đã kết nối) vì cảnh báo xuất phát từ gateway
 
 ---
 

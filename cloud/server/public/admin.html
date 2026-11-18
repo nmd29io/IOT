@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Console quản lý ngập</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1f6fd1">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -33,6 +38,17 @@
     <div id="spreadBanner" class="banner danger hidden"></div>
 
     <div class="card">
+      <h2>📲 Ứng dụng &amp; thông báo trên điện thoại</h2>
+      <div class="row">
+        <button id="installBtn" class="primary hidden">📲 Cài ứng dụng</button>
+        <button id="pushBtn">🔔 Bật thông báo trên thiết bị này</button>
+        <button id="pushTest" class="hidden">Gửi thử</button>
+        <span id="pushStatus" class="muted"></span>
+      </div>
+      <p class="muted" id="iosHint" style="margin:8px 0 0">iPhone: mở bằng Safari → Chia sẻ → <b>Thêm vào MH chính</b>, mở app từ màn hình chính rồi bật thông báo (iOS 16.4 trở lên).</p>
+    </div>
+
+    <div class="card">
       <h2>🚨 Yêu cầu vận hành</h2>
       <div id="incidents"></div>
       <h3 style="margin-top:14px">Thống kê 7 ngày</h3>
@@ -60,6 +76,8 @@
       <div class="grid" id="cfgForms" style="margin-top:12px"></div>
       <p class="muted">Lệnh từ web đi: Cloud → <code>flood/cloud/…</code> → Gateway kiểm tra hợp lệ → node. Kết quả node trả về hiện trong nhật ký.</p>
     </div>
+
+    <div class="card"><h2>🔔 Cảnh báo gần đây</h2><div class="log" id="alerts"></div></div>
 
     <div class="grid">
       <div class="card"><h2>📋 Sự cố đã đóng</h2><div class="scroll"><table id="incHistory"></table></div></div>
@@ -253,6 +271,74 @@ document.querySelectorAll('[data-h]').forEach(b => b.onclick = () => {
     loadHistory();
 });
 
+// ── Cảnh báo ──────────────────────────────────────────────────────────────
+const SEV = { critical: '🔴', warning: '🟡', info: '🔵' };
+const alertRow = a => `<div><time>${fmtDateTime(a.ts)}</time>${SEV[a.severity] || ''} <b>${esc(a.title)}</b><br><span class="muted">${esc(a.body)}</span></div>`;
+async function loadAlerts() {
+    const rows = await authed('api/alerts?limit=40');
+    $('alerts').innerHTML = rows.map(alertRow).join('') || '<div class="muted">Chưa có cảnh báo.</div>';
+}
+function onAlert(a) {
+    const el = document.createElement('div');
+    el.innerHTML = alertRow(a);
+    $('alerts').prepend(el.firstElementChild);
+    if (a.severity !== 'info') toast(a.title);
+}
+
+// ── PWA: cài ứng dụng + Web Push ──────────────────────────────────────────
+let installEvt = null, swReg = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('installBtn').classList.remove('hidden'); });
+$('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null; $('installBtn').classList.add('hidden'); };
+if (!/iPhone|iPad/.test(navigator.userAgent)) $('iosHint').classList.add('hidden');
+
+const b64ToBytes = s => { const p = '='.repeat((4 - s.length % 4) % 4); const r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); };
+// Server có thể khởi động lại với ổ đĩa trống (Hugging Face miễn phí) → mỗi lần mở app, gửi lại đăng ký của thiết bị;
+// nếu khoá VAPID của server đã đổi thì đăng ký mới. Người dùng không phải bấm lại "Bật thông báo".
+let synced = false;
+async function resync(sub) {
+    synced = true;
+    const { publicKey } = await api('api/push/key');
+    const cur = sub.options && sub.options.applicationServerKey;
+    const same = cur && btoa(String.fromCharCode(...new Uint8Array(cur))) === btoa(String.fromCharCode(...b64ToBytes(publicKey)));
+    if (cur && !same) {
+        await sub.unsubscribe();
+        sub = await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+    }
+    await authed('api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON(), name: WHO } });
+    return sub;
+}
+async function pushState() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        $('pushBtn').disabled = true;
+        $('pushStatus').textContent = location.protocol === 'https:' || location.hostname === 'localhost'
+            ? 'Trình duyệt này không hỗ trợ thông báo đẩy.' : 'Cần mở qua HTTPS để bật thông báo.';
+        return;
+    }
+    swReg = await navigator.serviceWorker.register('/sw.js');
+    let sub = await swReg.pushManager.getSubscription();
+    if (sub && !synced) await resync(sub).then(s => { sub = s; }).catch(() => {});
+    $('pushBtn').textContent = sub ? '🔕 Tắt thông báo trên thiết bị này' : '🔔 Bật thông báo trên thiết bị này';
+    $('pushTest').classList.toggle('hidden', !sub);
+    $('pushStatus').textContent = sub ? 'Thiết bị này đang nhận cảnh báo.' : (Notification.permission === 'denied' ? 'Thông báo đang bị chặn trong cài đặt trình duyệt.' : '');
+}
+$('pushBtn').onclick = async () => {
+    try {
+        const sub = await swReg.pushManager.getSubscription();
+        if (sub) {
+            await authed('api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } });
+            await sub.unsubscribe();
+        } else {
+            if (await Notification.requestPermission() !== 'granted') return pushState();
+            const { publicKey } = await api('api/push/key');
+            const s = await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+            const r = await authed('api/push/subscribe', { method: 'POST', body: { subscription: s.toJSON(), name: WHO } });
+            toast(r.message);
+        }
+    } catch (e) { toast('Lỗi: ' + e.message); }
+    pushState();
+};
+$('pushTest').onclick = () => act('api/push/test', {});
+
 // ── Khởi động ─────────────────────────────────────────────────────────────
 let started = false;
 async function refresh() {
@@ -263,6 +349,7 @@ async function start() {
     started = true;
     await refresh();
     loadIncidents().catch(() => {}); loadLog().catch(() => {}); loadHistory().catch(() => {});
+    loadAlerts().catch(() => {}); pushState().catch(e => { $('pushStatus').textContent = e.message; });
     setInterval(refresh, 15000);
     setInterval(() => loadHistory().catch(() => {}), 30000);
     setInterval(() => { if (S) { renderIncidents(); renderNodes(); } }, 5000);
@@ -273,6 +360,7 @@ async function start() {
         else if (type === 'info') { S.info[data.id] = { ...(S.info[data.id] || {}), ...data.info }; renderDevices(); }
         else if (type === 'log') prependLog(data);
         else if (type === 'incident') loadIncidents().catch(() => {});
+        else if (type === 'alert') onAlert(data);
     }, TOKEN);
 }
 </script>

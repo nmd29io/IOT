@@ -1,0 +1,29 @@
+# Bridge Mosquitto laptop ⇄ broker công cộng, để ESP32 chạy trên Wokwi nói chuyện được với Node-RED.
+# Dùng: sao chép thành wokwi-bridge.conf (cùng thư mục) rồi chạy lại start_all.bat.
+# Tắt (khi dùng mạch thật): xoá hoặc đổi tên wokwi-bridge.conf.
+#
+# Tiền tố "uet-int3323-n1-09e061/" phải giống TOPIC_PREFIX trong firmware/wokwi/config.wokwi.h.
+# Cú pháp: topic <mẫu> <hướng> <qos> <tiền tố cục bộ> <tiền tố trên broker công cộng>
+#   → topic cục bộ  flood/cong1/level  ⇄  trên broker  uet-int3323-n1-09e061/flood/cong1/level
+# Mỗi topic chỉ đi MỘT chiều để không bị lặp tin.
+# LƯU Ý: broker công cộng không có mật khẩu — chỉ dùng để thử nghiệm, không dùng khi triển khai thật.
+
+connection wokwi-public
+address broker.hivemq.com:1883
+remote_clientid uet-n1-gateway-09e061
+cleansession true
+try_private false
+restart_timeout 5 30
+# Bắt buộc tắt: mặc định bridge ghi Last Will vào $SYS/... và HiveMQ sẽ ngắt kết nối ngay
+notifications false
+
+# Từ ESP32 (Wokwi) VỀ laptop
+topic flood/+/level in 1 "" uet-int3323-n1-09e061/
+topic flood/+/status in 1 "" uet-int3323-n1-09e061/
+topic flood/+/info in 1 "" uet-int3323-n1-09e061/
+topic flood/+/event in 1 "" uet-int3323-n1-09e061/
+
+# Từ laptop (dashboard / cloud) XUỐNG ESP32
+topic flood/+/config out 1 "" uet-int3323-n1-09e061/
+topic flood/+/cmd out 1 "" uet-int3323-n1-09e061/
+topic flood/+/alarm/cmd out 1 "" uet-int3323-n1-09e061/
