@@ -24,8 +24,8 @@
 #define ROAD_ID     "duong1"        // mã node đường
 
 // ─── WiFi ────────────────────────────────────────────────────────────────────
-#define WIFI_SSID       "Ten_WiFi"
-#define WIFI_PASSWORD   "Mat_khau_WiFi"
+#define WIFI_SSID       "UET-Wifi-T4 5Ghz"
+#define WIFI_PASSWORD   ""
 
 // ─── MQTT broker (laptop chạy Mosquitto) ─────────────────────────────────────
 #define MQTT_SERVER     "192.168.1.100"
@@ -35,6 +35,9 @@
 
 // ─── Chân cảm biến JSN-SR04T ─────────────────────────────────────────────────
 // ECHO phải qua cầu chia áp 5V → 3,3V trước khi vào ESP32.
+// Khoảng cách nhỏ nhất được chấp nhận (cm). JSN-SR04T có vùng mù ~20 cm: đặt
+// thấp hơn thì đo gần được nhưng có thể nhiễu. HC-SR04 / AJ-SR04M đo được từ ~3 cm.
+#define MIN_RANGE_CM    20.0f
 // Cảm biến 1: node cống (MODE_DUAL / MODE_DRAIN) hoặc node đường (MODE_ROAD)
 #define SENSOR1_TRIG    5
 #define SENSOR1_ECHO    18
@@ -56,7 +59,7 @@
 #define DEFAULT_H_CM        60.0f   // khoảng cách cảm biến → đáy ống (cm)
 #define DEFAULT_HMAX_CM     35.0f   // chiều sâu dùng để tính % đầy (cm)
 // Node đường: h = d0 - d
-#define DEFAULT_D0_CM       50.0f   // cảm biến → mặt đường khô (cm). Phải ≥ 20 (vùng mù) + độ ngập lớn nhất cần đo
+#define DEFAULT_D0_CM       50.0f   // cảm biến → mặt đường khô (cm). Phải ≥ MIN_RANGE_CM + độ ngập lớn nhất cần đo
 
 // Ngưỡng node đường (cm) — giá trị theo báo cáo; khi demo trên khay nông
 // nên quy đổi nhỏ lại (ví dụ 2 / 4 / 3 / 1.5) bằng form cấu hình trên dashboard.

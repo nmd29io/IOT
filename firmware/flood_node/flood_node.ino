@@ -58,7 +58,9 @@
 #define MIN_VALID_SAMPLES   4        // cần ≥ 4/7 mẫu hợp lệ mới chấp nhận phép đo
 #define SAMPLE_GAP_MS       60       // JSN-SR04T cần ≥ 50 ms giữa hai lần phát
 #define ECHO_TIMEOUT_US     26000UL  // ≈ 4,5 m
-#define MIN_RANGE_CM        20.0f    // vùng mù của JSN-SR04T
+#ifndef MIN_RANGE_CM
+#define MIN_RANGE_CM        20.0f    // vùng mù của JSN-SR04T (đặt lại trong config.h nếu lắp gần hơn)
+#endif
 #define MAX_RANGE_CM        450.0f
 
 // ─── Mạng ────────────────────────────────────────────────────────────────────
@@ -378,9 +380,16 @@ static void applyConfig(Channel& c, JsonObject o) {
     if (readNum(o, "stable_s", v))     k.stableMs = (uint32_t)(v * 1000.0f);
 
     const char* err = nullptr;
-    if (k.H < MIN_RANGE_CM || k.H > MAX_RANGE_CM)              err = "H ngoai khoang 20-450 cm";
+    static char rangeErr[48];
+    if (k.H < MIN_RANGE_CM || k.H > MAX_RANGE_CM) {
+        snprintf(rangeErr, sizeof(rangeErr), "H ngoai khoang %.0f-%.0f cm", MIN_RANGE_CM, MAX_RANGE_CM);
+        err = rangeErr;
+    }
     else if (k.Hmax <= 0 || k.Hmax > k.H)                      err = "Hmax phai trong (0, H]";
-    else if (k.d0 < MIN_RANGE_CM || k.d0 > MAX_RANGE_CM)       err = "d0 ngoai khoang 20-450 cm";
+    else if (k.d0 < MIN_RANGE_CM || k.d0 > MAX_RANGE_CM) {
+        snprintf(rangeErr, sizeof(rangeErr), "d0 ngoai khoang %.0f-%.0f cm", MIN_RANGE_CM, MAX_RANGE_CM);
+        err = rangeErr;
+    }
     else if (!(k.tYellow > 0 && k.tYellow < k.tRed))           err = "can 0 < t_yellow < t_red";
     else if (!(k.tRedLow >= k.tYellow && k.tRedLow < k.tRed))  err = "can t_yellow <= t_red_low < t_red";
     else if (!(k.tYellowLow >= 0 && k.tYellowLow < k.tYellow)) err = "can 0 <= t_yellow_low < t_yellow";
@@ -517,6 +526,14 @@ void setup() {
         pinMode(LED_RED_PIN, OUTPUT);
         pinMode(BUZZER_PIN, OUTPUT);
         buzzerWrite(false);
+        // Tự kiểm tra đèn khi khởi động: xanh → vàng → đỏ, mỗi đèn 0,4 s.
+        const Level seq[] = {GREEN, YELLOW, RED};
+        for (Level l : seq) {
+            setLeds(l);
+            Serial.printf("[LED] test %s (GPIO %d)\n", LEVEL_STR[l],
+                          l == GREEN ? LED_GREEN_PIN : l == YELLOW ? LED_YELLOW_PIN : LED_RED_PIN);
+            delay(400);
+        }
         setLeds(GREEN);
     }
     // Task đo + cảnh báo tại chỗ: ưu tiên cao hơn loop(), không phụ thuộc mạng.
