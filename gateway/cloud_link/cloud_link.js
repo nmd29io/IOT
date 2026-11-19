@@ -84,6 +84,14 @@ remote.on('message', (topic, payload) => {
 
 setInterval(() => log(`[THỐNG KÊ] lên cloud: ${up} tin · lệnh từ cloud: ${down} · cloud ${remote.connected ? 'ONLINE' : 'OFFLINE'}`), 60000);
 
+// Giữ cloud gói free (Render…) không ngủ khi gateway đang chạy: gọi /healthz mỗi 5 phút.
+// Đồng thời đánh thức cloud ngay khi gateway khởi động, để lần kết nối wss đầu không phải chờ.
+const healthUrl = CFG.url.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/mqtt\/?$/, '/healthz');
+const ping = () => fetch(healthUrl, { signal: AbortSignal.timeout(90000) })
+    .then(r => { if (!r.ok) log('[CLOUD] /healthz trả về', r.status); })
+    .catch(e => log('[CLOUD] Không gọi được /healthz:', e.message));
+if (/^https?:\/\/(?!localhost|127\.)/.test(healthUrl)) { ping(); setInterval(ping, 5 * 60000); }
+
 function shutdown() {
     log('Đang dừng — báo cloud gateway offline');
     const done = () => { remote.end(false, () => local.end(false, () => process.exit(0))); };
