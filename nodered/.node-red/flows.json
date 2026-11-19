@@ -1064,7 +1064,7 @@
         "type": "function",
         "z": "tab_flood_main",
         "name": "Kiểm tra & gửi cấu hình (retained)",
-        "func": "// Form cấu hình từ xa → kiểm tra → publish retained flood/<id>/config.\n// Node nhận, kiểm tra lại, lưu NVS và trả về sự kiện config_applied / config_rejected.\nconst id = msg.topic;                         // topic của ui_form = mã node\nconst ALLOWED = ['H', 'Hmax', 'd0', 't_yellow', 't_red', 't_red_low', 't_yellow_low', 'stable_s', 'period_s'];\nconst input = msg.payload || {};\nconst clean = {};\nfor (const [k, v] of Object.entries(input)) {\n    if (!ALLOWED.includes(k)) continue;\n    if (v === '' || v === null || v === undefined) continue;\n    const n = Number(v);\n    if (!isFinite(n)) return [null, { topic: 'Lỗi cấu hình', payload: `Giá trị \"${k}\" không hợp lệ` }, null];\n    clean[k] = n;\n}\nif (!Object.keys(clean).length) return [null, { topic: 'Cấu hình', payload: 'Chưa nhập giá trị nào' }, null];\n\nconst running = ((flow.get('info') || {})[id] || {}).cfg || {};\nconst stored = (flow.get('cfg') || {})[id] || {};\nconst c = Object.assign({}, running, stored, clean);\n\nconst errs = [];\nconst has = k => c[k] !== undefined;\nif (has('H') && (c.H < 20 || c.H > 450)) errs.push('H phải trong 20–450 cm');\nif (has('H') && has('Hmax') && (c.Hmax <= 0 || c.Hmax > c.H)) errs.push('Hmax phải trong (0, H]');\nif (has('d0') && (c.d0 < 20 || c.d0 > 450)) errs.push('d0 phải trong 20–450 cm (vùng mù cảm biến)');\nif (has('t_yellow') && has('t_red') && !(c.t_yellow > 0 && c.t_yellow < c.t_red)) errs.push('cần 0 < ngưỡng VÀNG < ngưỡng ĐỎ');\nif (has('t_red_low') && has('t_red') && has('t_yellow') && !(c.t_red_low >= c.t_yellow && c.t_red_low < c.t_red)) errs.push('cần ngưỡng VÀNG ≤ \"ĐỎ→VÀNG\" < ngưỡng ĐỎ');\nif (has('t_yellow_low') && has('t_yellow') && !(c.t_yellow_low >= 0 && c.t_yellow_low < c.t_yellow)) errs.push('cần 0 ≤ \"VÀNG→XANH\" < ngưỡng VÀNG');\nif (has('period_s') && (c.period_s < 1 || c.period_s > 60)) errs.push('chu kỳ đo 1–60 s');\nif (has('stable_s') && (c.stable_s < 0 || c.stable_s > 300)) errs.push('thời gian ổn định 0–300 s');\nif (errs.length) return [null, { topic: 'Lỗi cấu hình ' + id, payload: errs.join('; ') }, null];\n\nreturn [\n    { topic: `flood/${id}/config`, payload: c, retain: true, qos: 1 },\n    { topic: 'Cấu hình ' + id, payload: 'Đã gửi, chờ node xác nhận…' },\n    { payload: { t: Date.now(), text: `⚙️ ${msg.source === 'Web' ? '[Web] ' : ''}Gửi cấu hình tới ${id}: ${JSON.stringify(clean)}` } }\n];\n",
+        "func": "// Form cấu hình từ xa → kiểm tra → publish retained flood/<id>/config.\n// Node nhận, kiểm tra lại, lưu NVS và trả về sự kiện config_applied / config_rejected.\nconst id = msg.topic;                         // topic của ui_form = mã node\nconst ALLOWED = ['H', 'Hmax', 'd0', 't_yellow', 't_red', 't_red_low', 't_yellow_low', 'stable_s', 'period_s'];\nconst input = msg.payload || {};\nconst clean = {};\nfor (const [k, v] of Object.entries(input)) {\n    if (!ALLOWED.includes(k)) continue;\n    if (v === '' || v === null || v === undefined) continue;\n    const n = Number(v);\n    if (!isFinite(n)) return [null, { topic: 'Lỗi cấu hình', payload: `Giá trị \"${k}\" không hợp lệ` }, null];\n    clean[k] = n;\n}\nif (!Object.keys(clean).length) return [null, { topic: 'Cấu hình', payload: 'Chưa nhập giá trị nào' }, null];\n\nconst running = ((flow.get('info') || {})[id] || {}).cfg || {};\nconst stored = (flow.get('cfg') || {})[id] || {};\nconst c = Object.assign({}, running, stored, clean);\n\nconst MIN_CM = 3;                            // HC-SR04 đo được từ ~3 cm (JSN-SR04T: 20)\nconst errs = [];\nconst has = k => c[k] !== undefined;\nif (has('H') && (c.H < MIN_CM || c.H > 450)) errs.push(`H phải trong ${MIN_CM}–450 cm`);\nif (has('H') && has('Hmax') && (c.Hmax <= 0 || c.Hmax > c.H)) errs.push('Hmax phải trong (0, H]');\nif (has('d0') && (c.d0 < MIN_CM || c.d0 > 450)) errs.push(`d0 phải trong ${MIN_CM}–450 cm (vùng mù cảm biến)`);\nif (has('t_yellow') && has('t_red') && !(c.t_yellow > 0 && c.t_yellow < c.t_red)) errs.push('cần 0 < ngưỡng VÀNG < ngưỡng ĐỎ');\nif (has('t_red_low') && has('t_red') && has('t_yellow') && !(c.t_red_low >= c.t_yellow && c.t_red_low < c.t_red)) errs.push('cần ngưỡng VÀNG ≤ \"ĐỎ→VÀNG\" < ngưỡng ĐỎ');\nif (has('t_yellow_low') && has('t_yellow') && !(c.t_yellow_low >= 0 && c.t_yellow_low < c.t_yellow)) errs.push('cần 0 ≤ \"VÀNG→XANH\" < ngưỡng VÀNG');\nif (has('period_s') && (c.period_s < 1 || c.period_s > 60)) errs.push('chu kỳ đo 1–60 s');\nif (has('stable_s') && (c.stable_s < 0 || c.stable_s > 300)) errs.push('thời gian ổn định 0–300 s');\nif (errs.length) return [null, { topic: 'Lỗi cấu hình ' + id, payload: errs.join('; ') }, null];\n\nreturn [\n    { topic: `flood/${id}/config`, payload: c, retain: true, qos: 1 },\n    { topic: 'Cấu hình ' + id, payload: 'Đã gửi, chờ node xác nhận…' },\n    { payload: { t: Date.now(), text: `⚙️ ${msg.source === 'Web' ? '[Web] ' : ''}Gửi cấu hình tới ${id}: ${JSON.stringify(clean)}` } }\n];\n",
         "outputs": 3,
         "timeout": 0,
         "noerr": 0,
@@ -1483,6 +1483,260 @@
         "outputs": 1,
         "x": 940,
         "y": 1040,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ui_group_ai_params",
+        "type": "ui_group",
+        "name": "🤖 Đặc trưng dự báo AI",
+        "tab": "ui_tab_devices",
+        "order": 3,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "ui_form_ai_params",
+        "type": "ui_form",
+        "z": "tab_flood_main",
+        "name": "Đặc trưng AI",
+        "label": "Chỉnh đặc trưng (để trống = giữ nguyên)",
+        "group": "ui_group_ai_params",
+        "order": 1,
+        "width": "6",
+        "height": "1",
+        "options": [
+            {
+                "label": "Mưa hiện tại (mm/phút)",
+                "value": "rain_current",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Mưa dự báo 15 phút tới (mm)",
+                "value": "rain_15m",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Mưa dự báo 30 phút tới (mm)",
+                "value": "rain_30m",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Mưa dự báo 60 phút tới (mm)",
+                "value": "rain_60m",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Mực nước sông hạ lưu (35–100 cm)",
+                "value": "downstream_river",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Diện tích lưu vực A (ha)",
+                "value": "catchment_area_ha",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Hệ số dòng chảy C (0–1)",
+                "value": "runoff_coefficient_C",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Năng lực thoát Qmax (m³/s)",
+                "value": "max_discharge_capacity_m3s",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Độ sâu cống mô hình để quy đổi (cm, 0 = tắt)",
+                "value": "demo_depth_cm",
+                "type": "number",
+                "required": false,
+                "rows": null
+            }
+        ],
+        "formValue": {
+            "rain_current": "",
+            "rain_15m": "",
+            "rain_30m": "",
+            "rain_60m": "",
+            "downstream_river": "",
+            "catchment_area_ha": "",
+            "runoff_coefficient_C": "",
+            "max_discharge_capacity_m3s": "",
+            "demo_depth_cm": ""
+        },
+        "payload": "",
+        "submit": "Gửi tới AI",
+        "cancel": "Huỷ",
+        "topic": "ai",
+        "topicType": "str",
+        "splitLayout": "",
+        "className": "",
+        "x": 150,
+        "y": 3960,
+        "wires": [
+            [
+                "fn_ai_params_submit"
+            ]
+        ]
+    },
+    {
+        "id": "fn_ai_params_submit",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Kiểm tra & gửi đặc trưng AI (retained)",
+        "func": "// Form đặc trưng AI → kiểm tra → publish retained flood/ai/params.\n// Dịch vụ edge_ml_service.py nhận và dùng ngay cho lần dự báo kế tiếp. Ô để trống = giữ giá trị cũ.\nconst RANGES = {\"rain_current\": [0, 15], \"rain_15m\": [0, 200], \"rain_30m\": [0, 400], \"rain_60m\": [0, 800], \"downstream_river\": [35, 100], \"catchment_area_ha\": [0.1, 1000], \"runoff_coefficient_C\": [0.05, 1], \"max_discharge_capacity_m3s\": [0.05, 50], \"demo_depth_cm\": [0, 180]};\nconst input = msg.payload || {};\nconst clean = {};\nconst errs = [];\nfor (const [k, v] of Object.entries(input)) {\n    if (!(k in RANGES) || v === '' || v === null || v === undefined) continue;\n    const n = Number(v);\n    const [lo, hi] = RANGES[k];\n    if (!isFinite(n) || n < lo || n > hi) { errs.push(`${k} phải trong ${lo}–${hi}`); continue; }\n    clean[k] = n;\n}\nif (errs.length) return [null, { topic: 'Lỗi đặc trưng AI', payload: errs.join('; ') }, null];\nif (!Object.keys(clean).length) return [null, { topic: 'Đặc trưng AI', payload: 'Chưa nhập giá trị nào' }, null];\nconst cur = Object.assign({}, {\"rain_current\": 0, \"rain_15m\": 0, \"rain_30m\": 0, \"rain_60m\": 0, \"downstream_river\": 45, \"catchment_area_ha\": 12.5, \"runoff_coefficient_C\": 0.85, \"max_discharge_capacity_m3s\": 1.45, \"demo_depth_cm\": 0}, flow.get('ai_params') || {}, clean);\nreturn [\n    { topic: 'flood/ai/params', payload: cur, retain: true, qos: 1 },\n    { topic: 'Đặc trưng AI', payload: 'Đã gửi tới dịch vụ AI' },\n    { payload: { t: Date.now(), text: `🤖 Đổi đặc trưng AI: ${JSON.stringify(clean)}` } }\n];\n",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 3960,
+        "wires": [
+            [
+                "mqtt_out_dyn"
+            ],
+            [
+                "ui_toast"
+            ],
+            [
+                "fn_log"
+            ]
+        ]
+    },
+    {
+        "id": "ui_btn_ai_reset",
+        "type": "ui_button",
+        "z": "tab_flood_main",
+        "name": "Khôi phục mặc định AI",
+        "group": "ui_group_ai_params",
+        "order": 3,
+        "width": "6",
+        "height": "1",
+        "passthru": false,
+        "label": "↺ Khôi phục mặc định",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "",
+        "topicType": "str",
+        "x": 160,
+        "y": 4010,
+        "wires": [
+            [
+                "fn_ai_params_reset"
+            ]
+        ]
+    },
+    {
+        "id": "fn_ai_params_reset",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Đặc trưng AI mặc định",
+        "func": "// Khôi phục đặc trưng AI mặc định (theo config/gis_hydraulic_params.json, không mưa, tắt quy đổi).\nreturn [\n    { topic: 'flood/ai/params', payload: {\"rain_current\": 0, \"rain_15m\": 0, \"rain_30m\": 0, \"rain_60m\": 0, \"downstream_river\": 45, \"catchment_area_ha\": 12.5, \"runoff_coefficient_C\": 0.85, \"max_discharge_capacity_m3s\": 1.45, \"demo_depth_cm\": 0}, retain: true, qos: 1 },\n    { topic: 'Đặc trưng AI', payload: 'Đã khôi phục mặc định' },\n    { payload: { t: Date.now(), text: '🤖 Khôi phục đặc trưng AI mặc định' } }\n];\n",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 4010,
+        "wires": [
+            [
+                "mqtt_out_dyn"
+            ],
+            [
+                "ui_toast"
+            ],
+            [
+                "fn_log"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_in_ai_params",
+        "type": "mqtt in",
+        "z": "tab_flood_main",
+        "name": "",
+        "topic": "flood/ai/params",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 4060,
+        "wires": [
+            [
+                "fn_ai_params_store"
+            ]
+        ]
+    },
+    {
+        "id": "fn_ai_params_store",
+        "type": "function",
+        "z": "tab_flood_main",
+        "name": "Lưu & hiển thị đặc trưng AI",
+        "func": "// Lưu bản sao đặc trưng AI (retained) và hiển thị bảng giá trị đang dùng.\nif (typeof msg.payload !== 'object' || !msg.payload) return null;\nflow.set('ai_params', msg.payload);\nconst LABELS = {\"rain_current\": \"Mưa hiện tại (mm/phút)\", \"rain_15m\": \"Mưa dự báo 15 phút tới (mm)\", \"rain_30m\": \"Mưa dự báo 30 phút tới (mm)\", \"rain_60m\": \"Mưa dự báo 60 phút tới (mm)\", \"downstream_river\": \"Mực nước sông hạ lưu (35–100 cm)\", \"catchment_area_ha\": \"Diện tích lưu vực A (ha)\", \"runoff_coefficient_C\": \"Hệ số dòng chảy C (0–1)\", \"max_discharge_capacity_m3s\": \"Năng lực thoát Qmax (m³/s)\", \"demo_depth_cm\": \"Độ sâu cống mô hình để quy đổi (cm, 0 = tắt)\"};\nmsg.payload = Object.keys(LABELS).map(k => ({ k: LABELS[k], v: msg.payload[k] ?? '—' }));\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 4060,
+        "wires": [
+            [
+                "ui_tpl_ai_params"
+            ]
+        ]
+    },
+    {
+        "id": "ui_tpl_ai_params",
+        "type": "ui_template",
+        "z": "tab_flood_main",
+        "group": "ui_group_ai_params",
+        "name": "Đặc trưng AI đang dùng",
+        "order": 2,
+        "width": "6",
+        "height": "8",
+        "format": "<table style=\"width:100%;border-collapse:collapse;font-size:14px\">\n  <tr ng-repeat=\"r in msg.payload\" style=\"border-bottom:1px solid rgba(128,128,128,.25)\">\n    <td style=\"padding:4px 6px\">{{r.k}}</td>\n    <td style=\"padding:4px 6px;text-align:right;font-weight:600\">{{r.v}}</td>\n  </tr>\n</table>\n<div ng-if=\"!msg.payload\" style=\"opacity:.7\">Chưa có cấu hình — dịch vụ AI đang dùng giá trị mặc định.</div>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 650,
+        "y": 4060,
         "wires": [
             []
         ]

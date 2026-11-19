@@ -87,15 +87,48 @@ radar_forecast = {
     "downstream_river": 45.0
 }
 
+# Đặc trưng chỉnh tay từ dashboard (topic retained flood/ai/params).
+# demo_depth_cm > 0: quy đổi mực nước mô hình thu nhỏ (VD cống sâu 5 cm) về thang 0–180 cm
+# mà mô hình được huấn luyện, rồi đổi dự báo về lại cm thật.
+demo_depth_cm = 0.0
+AI_PARAM_RANGES = {
+    "rain_current": (0.0, 15.0), "rain_15m": (0.0, 200.0), "rain_30m": (0.0, 400.0),
+    "rain_60m": (0.0, 800.0), "downstream_river": (35.0, 100.0),
+    "catchment_area_ha": (0.1, 1000.0), "runoff_coefficient_C": (0.05, 1.0),
+    "max_discharge_capacity_m3s": (0.05, 50.0), "demo_depth_cm": (0.0, 180.0),
+}
+
+def apply_ai_params(p):
+    global C_runoff, A_ha, Q_max_pipe, demo_depth_cm
+    if not isinstance(p, dict):
+        return
+    clean = {}
+    for k, (lo, hi) in AI_PARAM_RANGES.items():
+        if k in p and p[k] is not None:
+            try:
+                clean[k] = min(hi, max(lo, float(p[k])))
+            except (TypeError, ValueError):
+                pass
+    for k in ("rain_current", "rain_15m", "rain_30m", "rain_60m", "downstream_river"):
+        if k in clean:
+            radar_forecast[k] = clean[k]
+    C_runoff = clean.get("runoff_coefficient_C", C_runoff)
+    A_ha = clean.get("catchment_area_ha", A_ha)
+    Q_max_pipe = clean.get("max_discharge_capacity_m3s", Q_max_pipe)
+    demo_depth_cm = clean.get("demo_depth_cm", demo_depth_cm)
+    print(f"[AI PARAMS] Áp dụng: {clean} | A={A_ha}ha C={C_runoff} Qmax={Q_max_pipe} "
+          f"demo_depth={demo_depth_cm}cm", flush=True)
+
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         print("[MQTT] Đã kết nối thành công tới Mosquitto Broker!")
         client.subscribe([
             ("flood/cong1/level", 1),
             ("flood/duong1/level", 1),
-            ("flood/weather/radar", 1)
+            ("flood/weather/radar", 1),
+            ("flood/ai/params", 1)
         ])
-        print("[MQTT] Đã subscribe: flood/cong1/level, flood/duong1/level, flood/weather/radar")
+        print("[MQTT] Đã subscribe: flood/cong1/level, flood/duong1/level, flood/weather/radar, flood/ai/params")
     else:
         print(f"[MQTT ERROR] Mã lỗi kết nối: {rc}")
 
@@ -114,6 +147,10 @@ def on_message(client, userdata, msg):
 
     if msg.topic == "flood/weather/radar":
         radar_forecast.update(payload)
+        return
+
+    if msg.topic == "flood/ai/params":
+        apply_ai_params(payload)
         return
 
     if msg.topic == "flood/cong1/level":
@@ -141,9 +178,21 @@ def on_message(client, userdata, msg):
         rate_30s_prev = get_rate(list(history_cong1)[:-1], 30) if len(history_cong1) > 2 else 0.0
         accel_1m = max(-10.0, min(10.0, rate_1m - rate_30s_prev))
 
+        # Quy đổi mô hình thu nhỏ → thang 0–180 cm của mô hình (k = 1 khi không quy đổi)
+        real_level_cm, real_fill_pct = level_cm, fill_pct
+        k_scale = (180.0 / demo_depth_cm) if demo_depth_cm > 0 else 1.0
+        if k_scale != 1.0:
+            level_cm = min(180.0, level_cm * k_scale)
+            fill_pct = round(level_cm / 180.0 * 100.0, 1)
+            rate_1m = max(-25.0, min(25.0, rate_1m * k_scale))
+            rate_3m = max(-25.0, min(25.0, rate_3m * k_scale))
+            rate_5m = max(-25.0, min(25.0, rate_5m * k_scale))
+            accel_1m = max(-10.0, min(10.0, accel_1m * k_scale))
+
         # 1. Tính toán lưu lượng và thông số thủy lực thời gian thực
-        # Chỉ ước tính mưa đổ về khi nước đang dâng thực tế
+        # Mưa: lấy giá trị lớn hơn giữa mưa nhập tay/radar và mưa ước tính từ tốc độ dâng
         est_rain = max(0.0, min(15.0, rate_1m * 0.5)) if rate_1m > 0 else 0.0
+        est_rain = max(est_rain, radar_forecast.get("rain_current", 0.0))
         inflow_m3s = (C_runoff * (est_rain * 60.0) * A_ha) / 360.0
 
         river_lvl = radar_forecast.get("downstream_river", 45.0)
@@ -228,7 +277,14 @@ def on_message(client, userdata, msg):
             color_30m = "#2ecc71"
             early_warning = False
 
+        # Trạng thái / xác suất ở trên tính theo thang mô hình; mực nước gửi đi đổi về cm thật.
+        if k_scale != 1.0:
+            level_cm, fill_pct = real_level_cm, real_fill_pct
+            rate_1m /= k_scale
+            pred_5m, pred_15m, pred_30m, pred_60m = (p / k_scale for p in (pred_5m, pred_15m, pred_30m, pred_60m))
+
         result = {
+            "demo_scale": round(k_scale, 2),
             "current_level": round(level_cm, 1),
             "current_fill": round(fill_pct, 1),
             "rate_1m": round(rate_1m, 2),
